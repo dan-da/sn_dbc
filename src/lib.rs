@@ -25,17 +25,14 @@ mod mint;
 
 pub use crate::{
     dbc::Dbc,
-    dbc_content::{AmountSecrets, BlindedOwner, DbcContent},
+    dbc_content::{AmountSecrets, DbcContent},
     dbc_transaction::DbcTransaction,
     error::{Error, Result},
     key_manager::{
         KeyManager, NodeSignature, PublicKey, PublicKeySet, Signature, SimpleKeyManager,
         SimpleSigner,
     },
-    mint::{
-        Mint, MintSignatures, ReissueRequest, ReissueTransaction, SimpleSpendBook, SpendBook,
-        GENESIS_DBC_INPUT,
-    },
+    mint::{Mint, MintSignatures, ReissueRequest, ReissueTransaction, SimpleSpendBook, SpendBook},
 };
 
 impl From<[u8; 32]> for Hash {
@@ -88,14 +85,12 @@ pub fn bls_dkg_id() -> bls_dkg::outcome::Outcome {
 
     let owner_name = rand::random();
     let threshold = 0;
-    let (mut key_gen, proposal) = match bls_dkg::KeyGen::initialize(
-        owner_name,
-        threshold,
-        BTreeSet::from_iter(vec![owner_name]),
-    ) {
-        Ok(key_gen_init) => key_gen_init,
-        Err(e) => panic!("Failed to init key gen {:?}", e),
-    };
+    let (mut key_gen, proposal) =
+        match bls_dkg::KeyGen::initialize(owner_name, threshold, BTreeSet::from_iter([owner_name]))
+        {
+            Ok(key_gen_init) => key_gen_init,
+            Err(e) => panic!("Failed to init key gen {:?}", e),
+        };
 
     let mut msgs = vec![proposal];
     while let Some(msg) = msgs.pop() {

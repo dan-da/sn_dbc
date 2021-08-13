@@ -2,8 +2,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter::FromIterator;
+use std::time::Duration;
 
 use curve25519_dalek_ng::scalar::Scalar;
+
 use sn_dbc::{
     bls_dkg_id, AmountSecrets, Dbc, DbcContent, Error, Mint, ReissueRequest, ReissueTransaction,
     SimpleKeyManager, SimpleSigner, SimpleSpendBook,
@@ -65,7 +67,7 @@ fn bench_reissue_1_to_100(c: &mut Criterion) {
     let n_outputs: u32 = 100;
     let (mut genesis, genesis_owner, genesis_dbc) = genesis(n_outputs as u64);
 
-    let inputs = HashSet::from_iter(vec![genesis_dbc.clone()]);
+    let inputs = HashSet::from_iter([genesis_dbc.clone()]);
     let input_hashes = BTreeSet::from_iter(inputs.iter().map(|in_dbc| in_dbc.name()));
 
     let genesis_secrets = decrypt_amount_secrets(&genesis_owner, &genesis_dbc.content).unwrap();
@@ -100,7 +102,7 @@ fn bench_reissue_1_to_100(c: &mut Criterion) {
 
     let reissue = ReissueRequest {
         transaction,
-        input_ownership_proofs: HashMap::from_iter(vec![(
+        input_ownership_proofs: HashMap::from_iter([(
             genesis_dbc.name(),
             (genesis_owner.public_key_set.public_key(), sig),
         )]),
@@ -121,7 +123,7 @@ fn bench_reissue_100_to_1(c: &mut Criterion) {
     let n_outputs: u32 = 100;
     let (mut genesis, genesis_owner, genesis_dbc) = genesis(n_outputs as u64);
 
-    let inputs = HashSet::from_iter(vec![genesis_dbc.clone()]);
+    let inputs = HashSet::from_iter([genesis_dbc.clone()]);
     let input_hashes = BTreeSet::from_iter(inputs.iter().map(|in_dbc| in_dbc.name()));
 
     let genesis_secrets = decrypt_amount_secrets(&genesis_owner, &genesis_dbc.content).unwrap();
@@ -166,7 +168,7 @@ fn bench_reissue_100_to_1(c: &mut Criterion) {
 
     let reissue = ReissueRequest {
         transaction,
-        input_ownership_proofs: HashMap::from_iter(vec![(
+        input_ownership_proofs: HashMap::from_iter([(
             genesis_dbc.name(),
             (genesis_owner.public_key_set.public_key(), sig),
         )]),
@@ -184,7 +186,7 @@ fn bench_reissue_100_to_1(c: &mut Criterion) {
     let dbcs = Vec::from_iter(outputs.into_iter().map(|content| Dbc {
         content,
         transaction: transaction.clone(),
-        transaction_sigs: BTreeMap::from_iter(vec![(
+        transaction_sigs: BTreeMap::from_iter([(
             genesis_dbc.name(),
             (mint_key_set.public_key(), mint_sig.clone()),
         )]),
@@ -201,7 +203,7 @@ fn bench_reissue_100_to_1(c: &mut Criterion) {
 
     let merge_transaction = ReissueTransaction {
         inputs: HashSet::from_iter(dbcs.clone()),
-        outputs: HashSet::from_iter(vec![merged_output]),
+        outputs: HashSet::from_iter([merged_output]),
     };
 
     let input_ownership_proofs = HashMap::from_iter(dbcs.iter().enumerate().map(|(i, dbc)| {
@@ -232,5 +234,9 @@ fn bench_reissue_100_to_1(c: &mut Criterion) {
     });
 }
 
-criterion_group!(reissue, bench_reissue_1_to_100, bench_reissue_100_to_1);
+criterion_group! {
+    name = reissue;
+    config = Criterion::default().measurement_time(Duration::new(20, 0));
+    targets = bench_reissue_1_to_100, bench_reissue_100_to_1
+}
 criterion_main!(reissue);
