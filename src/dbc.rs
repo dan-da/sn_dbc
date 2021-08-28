@@ -6,10 +6,7 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{
-    DbcContent, Error, Hash, KeyManager, PublicKey, Result,
-    Signature,
-};
+use crate::{DbcContent, Error, Hash, KeyManager, PublicKey, Result, Signature};
 use serde::{Deserialize, Serialize};
 // use blsbs::SignatureExaminer;
 
@@ -29,7 +26,11 @@ impl Dbc {
     pub fn confirm_valid<K: KeyManager>(&self, _verifier: &K) -> Result<(), Error> {
         use blsbs::SignatureExaminer;
 
-        let valid = SignatureExaminer::verify_signature_on_slip(self.content.slip(), &self.mint_signature, &self.mint_public_key);
+        let valid = SignatureExaminer::verify_signature_on_slip(
+            &self.content.slip(),
+            &self.mint_signature,
+            &self.mint_public_key,
+        );
         if !valid {
             return Err(Error::FailedSignature);
         }

@@ -7,11 +7,11 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{Error, Result};
-use blsttc::{SecretKeyShare};
+use blsbs::{BlindSignerShare, Envelope, SignatureExaminer, SignedEnvelopeShare, Slip};
+use blsttc::SecretKeyShare;
 pub use blsttc::{PublicKey, PublicKeySet, Signature};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use blsbs::{BlindSignerShare, Slip, Envelope, SignedEnvelopeShare, SignatureExaminer};
 
 // #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
 // pub struct NodeSignature {
@@ -33,6 +33,7 @@ pub trait KeyManager {
     type Error: std::error::Error;
     fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare, Self::Error>;
     fn public_key_set(&self) -> Result<PublicKeySet, Self::Error>;
+    #[allow(clippy::ptr_arg)]
     fn verify_slip(
         &self,
         slip: &Slip,
@@ -57,9 +58,12 @@ pub struct SimpleSigner {
 #[cfg(feature = "dkg")]
 impl From<bls_dkg::outcome::Outcome> for SimpleSigner {
     fn from(outcome: bls_dkg::outcome::Outcome) -> Self {
-        
         Self {
-            blind_signer_share: BlindSignerShare::new(outcome.secret_key_share, outcome.index, outcome.public_key_set),
+            blind_signer_share: BlindSignerShare::new(
+                outcome.secret_key_share,
+                outcome.index,
+                outcome.public_key_set,
+            ),
         }
     }
 }
@@ -67,7 +71,11 @@ impl From<bls_dkg::outcome::Outcome> for SimpleSigner {
 impl SimpleSigner {
     pub fn new(public_key_set: PublicKeySet, secret_key_share: (u64, SecretKeyShare)) -> Self {
         Self {
-            blind_signer_share: BlindSignerShare::new(secret_key_share.1, secret_key_share.0, public_key_set),
+            blind_signer_share: BlindSignerShare::new(
+                secret_key_share.1,
+                secret_key_share.0,
+                public_key_set,
+            ),
         }
     }
 
@@ -76,7 +84,10 @@ impl SimpleSigner {
     }
 
     fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare> {
-        self.blind_signer_share.sign_envelope(envelope).map_err(|e| Error::from(e))
+        #[allow(clippy::redundant_closure)]
+        self.blind_signer_share
+            .sign_envelope(envelope)
+            .map_err(|e| Error::from(e))
     }
 
     // fn sign<M: AsRef<[u8]>>(&self, msg: M) -> blsttc::SignatureShare {
@@ -117,11 +128,17 @@ impl KeyManager for SimpleKeyManager {
         self.signer.sign_envelope(envelope)
     }
 
+    #[allow(clippy::ptr_arg)]
     fn verify_slip(&self, slip: &Slip, key: &PublicKey, signature: &Signature) -> Result<()> {
         self.cache.verify_slip(slip, key, signature)
     }
 
-    fn verify_envelope(&self, envelope: &Envelope, key: &PublicKey, signature: &Signature) -> Result<()> {
+    fn verify_envelope(
+        &self,
+        envelope: &Envelope,
+        key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<()> {
         self.cache.verify_envelope(envelope, key, signature)
     }
 
@@ -144,6 +161,7 @@ impl Keys {
         self.0.insert(key);
     }
 
+    #[allow(clippy::ptr_arg)]
     fn verify_slip(&self, slip: &Slip, key: &PublicKey, sig: &Signature) -> Result<()> {
         self.verify_known_key(key)?;
         let is_verified = SignatureExaminer::verify_signature_on_slip(slip, sig, key);

@@ -41,8 +41,7 @@ pub enum Error {
         dbc_transaction: crate::DbcTransaction,
         public_key_set: crate::PublicKeySet,
         // fixme: this should be full Signature(s) from Spendbook, ie SignedEnvelope
-        signed_envelope_shares: 
-            Vec<blsbs::SignedEnvelopeShare>,
+        signed_envelope_shares: Vec<blsbs::SignedEnvelopeShare>,
     },
     #[error("Genesis Input has already been spent in a different transaction")]
     GenesisInputAlreadySpent,

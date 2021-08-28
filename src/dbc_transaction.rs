@@ -8,9 +8,9 @@
 
 use crate::{DbcContentHash, Hash};
 // use serde::{Deserialize, Serialize};
-use std::collections::{HashSet, BTreeSet};
-use tiny_keccak::{Hasher, Sha3};
 use blsbs::Envelope;
+use std::collections::{BTreeSet, HashSet};
+use tiny_keccak::{Hasher, Sha3};
 
 /// The spent identifier of the outputs created from this input
 /// Note these are hashes and not identifiers as the Dbc is not addressable on the network.
