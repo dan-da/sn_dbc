@@ -1,33 +1,51 @@
-use blsttc::{PublicKeySet, SignatureShare};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use blsbs::{Envelope, Fr, SignedEnvelopeShare, SlipPreparer};
+use blsttc::{IntoFr, PublicKeySet, SecretKeyShare, Signature, SignatureShare};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter::FromIterator;
 
-use curve25519_dalek_ng::scalar::Scalar;
-
 use crate::{
-    Amount, AmountSecrets, Dbc, DbcContent, Error, Hash, NodeSignature, ReissueShare,
-    ReissueTransaction, Result,
+    Amount, Dbc, DbcContent, DbcContentHash, DbcEnvelope, Denomination, Error, Hash,
+    ReissueRequest, ReissueShare, ReissueTransaction, Result,
 };
 
 ///! Unblinded data for creating sn_dbc::DbcContent
+#[derive(Debug, Clone)]
 pub struct Output {
-    pub amount: Amount,
+    pub denomination: Denomination,
     pub owner: blsttc::PublicKey,
 }
 
-#[derive(Default)]
+impl Output {
+    pub fn outputs_for_amount(owner: blsttc::PublicKey, amount: Amount) -> Vec<Self> {
+        Denomination::make_change(amount)
+            .iter()
+            .map(|d| Self {
+                denomination: *d,
+                owner,
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OutputSecret {
+    pub slip_preparer: SlipPreparer,
+    pub dbc_content: DbcContent,
+}
+
+#[derive(Debug, Default)]
 pub struct TransactionBuilder {
-    pub inputs: HashMap<Dbc, AmountSecrets>,
+    pub inputs: HashSet<Dbc>,
     pub outputs: Vec<Output>,
 }
 
 impl TransactionBuilder {
-    pub fn add_input(mut self, dbc: Dbc, amount_secrets: AmountSecrets) -> Self {
-        self.inputs.insert(dbc, amount_secrets);
+    pub fn add_input(mut self, dbc: Dbc) -> Self {
+        self.inputs.insert(dbc);
         self
     }
 
-    pub fn add_inputs(mut self, inputs: impl IntoIterator<Item = (Dbc, AmountSecrets)>) -> Self {
+    pub fn add_inputs(mut self, inputs: impl IntoIterator<Item = Dbc>) -> Self {
         self.inputs.extend(inputs);
         self
     }
@@ -45,67 +63,180 @@ impl TransactionBuilder {
     pub fn inputs_hashes(&self) -> BTreeSet<Hash> {
         self.inputs
             .iter()
-            .map(|(dbc, _)| dbc.name())
+            .map(|dbc| dbc.name())
             .collect::<BTreeSet<_>>()
     }
 
     pub fn inputs_amount_sum(&self) -> Amount {
-        self.inputs.iter().map(|(_, s)| s.amount).sum()
+        self.inputs.iter().map(|s| s.denomination().amount()).sum()
     }
 
     pub fn outputs_amount_sum(&self) -> Amount {
-        self.outputs.iter().map(|o| o.amount).sum()
+        self.outputs.iter().map(|o| o.denomination.amount()).sum()
     }
 
-    pub fn build(self) -> Result<(ReissueTransaction, HashMap<crate::Hash, blsttc::PublicKey>)> {
-        let parents = BTreeSet::from_iter(self.inputs.keys().map(Dbc::name));
-        let inputs_bf_sum = self
-            .inputs
-            .values()
-            .map(|amount_secrets| amount_secrets.blinding_factor)
-            .sum();
-
-        let mut outputs_bf_sum: Scalar = Default::default();
-        let outputs_and_owners = self
+    // Note: The HashMap result is necessary because DbcBuilder needs a couple things:
+    //       1. The DbcContent. Because Envelope, SignedEnvelopeShare do not
+    //          contain the Slip itself. Another method would be to encrypt the Slip and
+    //          include with Envelope.
+    //       2. SlipPreparer.  the preparer's blinding_factor is needed to obtain the
+    //          SignatureShare for the Slip after reissue.
+    pub fn build(self) -> Result<(ReissueTransaction, HashMap<DbcEnvelope, OutputSecret>)> {
+        let outputs_content = self
             .outputs
             .iter()
-            .enumerate()
-            .map(|(out_idx, output)| {
-                let blinding_factor = DbcContent::calc_blinding_factor(
-                    out_idx == self.outputs.len() - 1,
-                    inputs_bf_sum,
-                    outputs_bf_sum,
-                );
-                outputs_bf_sum += blinding_factor;
+            .map(|o| DbcContent::new(o.owner, o.denomination))
+            .collect::<HashSet<_>>();
 
-                let dbc_content = DbcContent::new(
-                    parents.clone(),
-                    output.amount,
-                    output.owner,
-                    blinding_factor,
-                )?;
-                Ok((dbc_content, output.owner))
+        let output_secrets = outputs_content
+            .into_iter()
+            .map(|c| {
+                let slip_preparer = SlipPreparer::new()?;
+                let envelope = slip_preparer.place_slip_in_envelope(&c.slip());
+                let dbc_envelope = DbcEnvelope {
+                    envelope,
+                    denomination: c.denomination(),
+                };
+                let output_secret = OutputSecret {
+                    slip_preparer,
+                    dbc_content: c,
+                };
+                Ok((dbc_envelope, output_secret))
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<HashMap<_, _>>>()?;
 
-        let inputs = HashSet::from_iter(self.inputs.into_keys());
-        let output_owners = HashMap::from_iter(
-            outputs_and_owners
+        let outputs: HashSet<DbcEnvelope> = HashSet::from_iter(output_secrets.keys().cloned());
+
+        let rt = ReissueTransaction {
+            inputs: self.inputs,
+            outputs,
+        };
+        Ok((rt, output_secrets))
+    }
+}
+
+/// Builds a ReissueRequest from a ReissueTransaction and
+/// any number of (input) DBC hashes with associated ownership share(s).
+#[derive(Debug, Default)]
+pub struct ReissueRequestBuilder {
+    pub reissue_transaction: Option<ReissueTransaction>,
+    #[allow(clippy::type_complexity)]
+    pub signers_by_dbc: HashMap<DbcContentHash, BTreeMap<PublicKeySet, (Fr, SecretKeyShare)>>,
+}
+
+impl ReissueRequestBuilder {
+    /// Create a new ReissueRequestBuilder from a ReissueTransaction
+    pub fn new(reissue_transaction: ReissueTransaction) -> Self {
+        Self {
+            reissue_transaction: Some(reissue_transaction),
+            signers_by_dbc: Default::default(),
+        }
+    }
+
+    /// Set the ReissueTransaction
+    pub fn set_reissue_transaction(mut self, reissue_transaction: ReissueTransaction) -> Self {
+        self.reissue_transaction = Some(reissue_transaction);
+        self
+    }
+
+    /// Add a single signer share for a DBC hash
+    pub fn add_dbc_signer<FR: IntoFr>(
+        mut self,
+        dbc: DbcContentHash,
+        public_key_set: PublicKeySet,
+        share_index: FR,
+        secret_key_share: SecretKeyShare,
+    ) -> Self {
+        let entry = self.signers_by_dbc.entry(dbc).or_insert_with(BTreeMap::new);
+        (*entry).insert(public_key_set, (share_index.into_fr(), secret_key_share));
+        self
+    }
+
+    /// Add a list of signer shares for a DBC hash
+    pub fn add_dbc_signers<FR: IntoFr>(
+        mut self,
+        dbc: DbcContentHash,
+        public_key_set: PublicKeySet,
+        secret_key_shares: Vec<(FR, SecretKeyShare)>,
+    ) -> Self {
+        let entry = self.signers_by_dbc.entry(dbc).or_insert_with(BTreeMap::new);
+        for (idx, secret_key_share) in secret_key_shares.into_iter() {
+            (*entry).insert(public_key_set.clone(), (idx.into_fr(), secret_key_share));
+        }
+        self
+    }
+
+    pub fn num_signers_by_dbc(&self, hash: DbcContentHash) -> usize {
+        match self.signers_by_dbc.get(&hash) {
+            Some(s) => s.len(),
+            None => 0,
+        }
+    }
+
+    /// Aggregates SecretKeyShares for all DBC owners in a ReissueTransaction
+    /// in order to combine signature shares into Signatures, thereby
+    /// creating the ownership proofs necessary to construct
+    /// a ReissueRequest.
+    pub fn build(self) -> Result<ReissueRequest> {
+        let transaction = match self.reissue_transaction {
+            Some(rt) => rt,
+            None => return Err(Error::NoReissueTransaction),
+        };
+
+        let mut input_ownership_proofs: HashMap<DbcContentHash, Signature> = Default::default();
+
+        for (dbc, signers) in self.signers_by_dbc.iter() {
+            let pks_set: HashSet<PublicKeySet> = signers.iter().map(|s| s.0.clone()).collect();
+            if pks_set.len() != 1 {
+                return Err(Error::ReissueRequestPublicKeySetMismatch);
+            }
+            let owner_public_key_set = match pks_set.iter().next() {
+                Some(pks) => pks,
+                None => return Err(Error::ReissueRequestPublicKeySetMismatch),
+            };
+
+            let sig_shares: BTreeMap<Fr, SignatureShare> = signers
                 .iter()
-                .map(|(dbc_content, owner)| (dbc_content.hash(), *owner)),
-        );
-        let outputs = HashSet::from_iter(outputs_and_owners.into_iter().map(|(o, _)| o));
-        Ok((ReissueTransaction { inputs, outputs }, output_owners))
+                .map(|s| {
+                    let idx = s.1 .0;
+                    let sks = &s.1 .1;
+                    let sig_share = sks.sign(dbc);
+                    (idx, sig_share)
+                })
+                .collect();
+
+            let sig_shares_ref: BTreeMap<Fr, &SignatureShare> = sig_shares
+                .iter()
+                .map(|(idx, share)| (*idx, share))
+                .collect();
+
+            let signature = owner_public_key_set.combine_signatures(sig_shares_ref)?;
+            input_ownership_proofs.insert(*dbc, signature);
+        }
+
+        let rr = ReissueRequest {
+            transaction,
+            input_ownership_proofs,
+        };
+        Ok(rr)
     }
 }
 
 /// A Builder for aggregating ReissueShare (Mint::reissue() results)
 /// from multiple mint nodes and combining signatures to
 /// generate the final Dbc outputs.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct DbcBuilder {
     pub reissue_transaction: Option<ReissueTransaction>,
     pub reissue_shares: Vec<ReissueShare>,
+
+    // Note: We need a couple things, included in OutputSecret:
+    //       1. The DbcContent. Because Envelope, SignedEnvelopeShare do not
+    //          contain the Slip itself. Another method would be to encrypt the Slip and
+    //          include with Envelope.
+    //       2. SlipPreparer.  the preparer's blinding_factor is needed to obtain the
+    //          SignatureShare for the Slip after reissue.
+    pub output_secrets: HashMap<DbcEnvelope, OutputSecret>,
 }
 
 impl DbcBuilder {
@@ -114,12 +245,38 @@ impl DbcBuilder {
         Self {
             reissue_transaction: Some(reissue_transaction),
             reissue_shares: Default::default(),
+            output_secrets: Default::default(),
         }
+    }
+
+    /// Add an output DbcContent
+    pub fn add_output_secret(
+        mut self,
+        dbc_envelope: DbcEnvelope,
+        output_secret: OutputSecret,
+    ) -> Self {
+        self.output_secrets.insert(dbc_envelope, output_secret);
+        self
+    }
+
+    /// Add multiple OutputSecret
+    pub fn add_output_secrets(
+        mut self,
+        contents: impl IntoIterator<Item = (DbcEnvelope, OutputSecret)>,
+    ) -> Self {
+        self.output_secrets.extend(contents);
+        self
     }
 
     /// Add a ReissueShare from Mint::reissue()
     pub fn add_reissue_share(mut self, reissue_share: ReissueShare) -> Self {
         self.reissue_shares.push(reissue_share);
+        self
+    }
+
+    /// Add multiple ReissueShare from Mint::reissue()
+    pub fn add_reissue_shares(mut self, shares: impl IntoIterator<Item = ReissueShare>) -> Self {
+        self.reissue_shares.extend(shares);
         self
     }
 
@@ -130,12 +287,13 @@ impl DbcBuilder {
     }
 
     /// Build the output DBCs
-    ///
-    /// Note that the result Vec may be empty if the ReissueTransaction
-    /// has not been set or no ReissueShare has been added.
     pub fn build(self) -> Result<Vec<Dbc>> {
         if self.reissue_shares.is_empty() {
             return Err(Error::NoReissueShares);
+        }
+
+        if self.output_secrets.is_empty() {
+            return Err(Error::NoOutputSecrets);
         }
 
         let reissue_transaction = match self.reissue_transaction {
@@ -143,23 +301,26 @@ impl DbcBuilder {
             None => return Err(Error::NoReissueTransaction),
         };
 
-        let mut mint_sig_shares: Vec<NodeSignature> = Default::default();
+        let mut signed_envelope_shares: HashMap<Envelope, Vec<SignedEnvelopeShare>> =
+            Default::default();
         let mut pk_set: HashSet<PublicKeySet> = Default::default();
 
+        // walk through ReissueShare from each MintNode and:
+        //  - generate a share list per output DBC/envelope.
+        //  - aggregate PublicKeySet in order to verify they are all the same.
+        //  - perform other validations
         for rs in self.reissue_shares.iter() {
-            // Make a list of NodeSignature (sigshare from each Mint Node)
-            let mut node_shares: Vec<NodeSignature> = rs
-                .mint_node_signatures
-                .iter()
-                .map(|e| e.1 .1.clone())
-                .collect();
-            mint_sig_shares.append(&mut node_shares);
+            // Make a list of SignedEnvelopeShare (sigshare from each Mint Node) per DBC
+            for share in rs.signed_envelope_shares.iter() {
+                // fixme: remove clone.  Envelope could be Hash<Envelope>
+                let share_list = signed_envelope_shares
+                    .entry(share.envelope.clone())
+                    .or_insert_with(Vec::new);
+                (*share_list).push(share.clone())
+            }
 
-            let pub_key_sets: HashSet<PublicKeySet> = rs
-                .mint_node_signatures
-                .iter()
-                .map(|e| e.1 .0.clone())
-                .collect();
+            let pub_key_sets: HashSet<PublicKeySet> =
+                HashSet::from_iter([rs.public_key_set.clone()]);
 
             // add pubkeyset to HashSet, so we can verify there is only one distinct PubKeySet
             pk_set = &pk_set | &pub_key_sets; // union the sets together.
@@ -169,14 +330,22 @@ impl DbcBuilder {
                 return Err(Error::ReissueShareDbcTransactionMismatch);
             }
 
-            // Verify that mint sig count matches input count.
-            if rs.mint_node_signatures.len() != reissue_transaction.inputs.len() {
+            // Verify that mint sig count matches output count.
+            if rs.signed_envelope_shares.len() != reissue_transaction.outputs.len() {
                 return Err(Error::ReissueShareMintNodeSignaturesLenMismatch);
             }
 
-            // Verify that each input has a NodeSignature
-            for input in reissue_transaction.inputs.iter() {
-                if rs.mint_node_signatures.get(&input.name()).is_none() {
+            // Verify that each output DbcEnvelope has a corresponding output SignedEnvelopeShare
+            for dbc_envelope in reissue_transaction.outputs.iter() {
+                // todo: do this in a more rusty way.
+                let mut found = false;
+                for ses in rs.signed_envelope_shares.iter() {
+                    if ses.envelope == dbc_envelope.envelope {
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
                     return Err(Error::ReissueShareMintNodeSignatureNotFoundForInput);
                 }
             }
@@ -191,38 +360,37 @@ impl DbcBuilder {
             None => return Err(Error::ReissueSharePublicKeySetMismatch),
         };
 
-        // Transform Vec<NodeSignature> to Vec<u64, &SignatureShare>
-        let mint_sig_shares_ref: Vec<(u64, &SignatureShare)> = mint_sig_shares
-            .iter()
-            .map(|e| e.threshold_crypto())
-            .collect();
+        // Generate final output Dbcs
+        let mut output_dbcs: Vec<Dbc> = Default::default();
+        for (dbc_envelope, output_secret) in self.output_secrets.into_iter() {
+            // Transform Vec<SignedEnvelopeShare> to BTreeMap<Fr, SignatureShare>
+            let mut mint_sig_shares: BTreeMap<Fr, SignatureShare> = Default::default();
+            for ses in signed_envelope_shares
+                .get(&dbc_envelope.envelope)
+                .unwrap()
+                .iter()
+            {
+                mint_sig_shares.insert(
+                    ses.signature_share_index(),
+                    ses.signature_share_for_slip(output_secret.slip_preparer.blinding_factor())?,
+                );
+            }
 
-        // Note: we can just use the first item because we already verified that
-        // all the ReissueShare match for dbc_transaction
-        let dbc_transaction = &self.reissue_shares[0].dbc_transaction;
+            let denom_idx = dbc_envelope.denomination.to_be_bytes();
+            let mint_derived_pks = mint_public_key_set.derive_child(&denom_idx);
 
-        // Combine signatures from all the mint nodes to obtain Mint's Signature.
-        let mint_sig = mint_public_key_set.combine_signatures(mint_sig_shares_ref)?;
+            // Combine signatures from all the mint nodes to obtain Mint's Signature.
+            let mint_sig = mint_derived_pks.combine_signatures(&mint_sig_shares)?;
 
-        // Form the final output DBCs, with Mint's Signature for each.
-        let mut output_dbcs: Vec<Dbc> = reissue_transaction
-            .outputs
-            .iter()
-            .map(|content| Dbc {
-                content: content.clone(),
-                transaction: dbc_transaction.clone(),
-                transaction_sigs: reissue_transaction
-                    .inputs
-                    .iter()
-                    .map(|input| {
-                        (
-                            input.name(),
-                            (mint_public_key_set.public_key(), mint_sig.clone()),
-                        )
-                    })
-                    .collect(),
-            })
-            .collect();
+            // Form the final output DBCs, with Mint's Signature for each.
+            let dbc = Dbc {
+                content: output_secret.dbc_content,
+                mint_public_key: mint_derived_pks.public_key(),
+                mint_signature: mint_sig,
+            };
+
+            output_dbcs.push(dbc);
+        }
 
         // sort outputs by name
         output_dbcs.sort_by_key(|d| d.name());

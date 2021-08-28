@@ -6,18 +6,14 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{
-    DbcContent, DbcContentHash, DbcTransaction, Error, Hash, KeyManager, PublicKey, Result,
-    Signature,
-};
+use crate::{DbcContent, Denomination, Error, Hash, KeyManager, PublicKey, Result, Signature};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Dbc {
     pub content: DbcContent,
-    pub transaction: DbcTransaction,
-    pub transaction_sigs: BTreeMap<DbcContentHash, (PublicKey, Signature)>,
+    pub mint_public_key: PublicKey,
+    pub mint_signature: Signature,
 }
 
 impl Dbc {
@@ -25,32 +21,27 @@ impl Dbc {
         self.content.hash()
     }
 
-    // Check there exists a DbcTransaction with the output containing this Dbc
-    // Check there DOES NOT exist a DbcTransaction with this Dbc as parent (already minted)
-    pub fn confirm_valid<K: KeyManager>(&self, verifier: &K) -> Result<(), Error> {
-        for (input, (mint_key, mint_sig)) in self.transaction_sigs.iter() {
-            if !self.transaction.inputs.contains(input) {
-                return Err(Error::UnknownInput);
-            }
+    pub fn denomination(&self) -> Denomination {
+        self.content.denomination()
+    }
 
-            verifier
-                .verify(&self.transaction.hash(), mint_key, mint_sig)
-                .map_err(|e| Error::Signing(e.to_string()))?;
-        }
-        if self.transaction.inputs.is_empty() {
-            Err(Error::TransactionMustHaveAnInput)
-        } else if self.transaction_sigs.len() < self.transaction.inputs.len() {
-            Err(Error::MissingSignatureForInput)
-        } else if self.transaction.inputs != self.content.parents {
-            Err(Error::DbcContentParentsDifferentFromTransactionInputs)
-        } else if !self.transaction.outputs.contains(&self.content.hash()) {
-            Err(Error::DbcContentNotPresentInTransactionOutput)
-        } else {
-            Ok(())
-        }
+    pub fn owner(&self) -> &PublicKey {
+        self.content.owner()
+    }
+
+    // Check that signature matches pubkey for content
+    pub fn confirm_valid<K: KeyManager>(&self, verifier: &K) -> Result<(), Error> {
+        verifier
+            .verify_slip(
+                &self.content.slip(),
+                &self.content.denomination().to_be_bytes(),
+                &self.mint_public_key,
+                &self.mint_signature,
+            )
+            .map_err(|e| Error::Signing(e.to_string()))
     }
 }
-
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,3 +400,4 @@ mod tests {
         Ok(())
     }
 }
+*/
