@@ -152,6 +152,10 @@ impl DbcBuilder {
             Default::default();
         let mut pk_set: HashSet<PublicKeySet> = Default::default();
 
+        // walk through ReissueShare from each MintNode and:
+        //  - generate a share list per output DBC/envelope.
+        //  - aggregate PublicKeySet in order to verify they are all the same.
+        //  - perform other validations
         for rs in self.reissue_shares.iter() {
             // Make a list of SignedEnvelopeShare (sigshare from each Mint Node) per DBC
             for share in rs.signed_envelope_shares.iter() {
@@ -203,6 +207,7 @@ impl DbcBuilder {
             None => return Err(Error::ReissueSharePublicKeySetMismatch),
         };
 
+        // Generate final output Dbcs
         let mut output_dbcs: Vec<Dbc> = Default::default();
         for (envelope, content) in self.outputs_content {
             // Transform Vec<SignedEnvelopeShare> to Vec<Fr, &SignatureShare>
@@ -212,10 +217,6 @@ impl DbcBuilder {
                 .iter()
                 .map(|e| e.signature_share_for_envelope_with_index())
                 .collect();
-
-            // Note: we can just use the first item because we already verified that
-            // all the ReissueShare match for dbc_transaction
-            // let dbc_transaction = &self.reissue_shares[0].dbc_transaction;
 
             // Combine signatures from all the mint nodes to obtain Mint's Signature.
             let mint_sig = mint_public_key_set.combine_signatures(mint_sig_shares_ref)?;
