@@ -6,7 +6,7 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{DbcContent, Error, Hash, KeyManager, PublicKey, Result, Signature};
+use crate::{DbcContent, Denomination, Error, Hash, KeyManager, PublicKey, Result, Signature};
 use serde::{Deserialize, Serialize};
 // use blsbs::SignatureExaminer;
 
@@ -20,6 +20,10 @@ pub struct Dbc {
 impl Dbc {
     pub fn name(&self) -> Hash {
         self.content.hash()
+    }
+
+    pub fn denomination(&self) -> Denomination {
+        self.content.denomination()
     }
 
     // Check that signature matches pubkey for content

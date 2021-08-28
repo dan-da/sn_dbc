@@ -79,6 +79,10 @@ pub enum Error {
     #[error("blind signature error: {0}")]
     BlindSignature(#[from] blsbs::Error),
 
+    /// Bls error
+    #[error("Bls error: {0}")]
+    Bls(#[from] blsttc::error::Error),
+
     /// I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),

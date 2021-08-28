@@ -16,7 +16,7 @@ use std::ops::Deref;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hash([u8; 32]);
 pub(crate) type DbcContentHash = Hash;
-//mod builder;
+mod builder;
 mod dbc;
 mod dbc_content;
 mod dbc_transaction;
@@ -25,14 +25,14 @@ mod key_manager;
 mod mint;
 
 pub use crate::{
-    //  builder::{DbcBuilder, Output, TransactionBuilder},
+    builder::{DbcBuilder, Output, TransactionBuilder},
     dbc::Dbc,
-    dbc_content::{Amount, DbcContent},
+    dbc_content::{Amount, DbcContent, Denomination},
     dbc_transaction::DbcTransaction,
     error::{Error, Result},
     key_manager::{KeyManager, PublicKey, PublicKeySet, Signature, SimpleKeyManager, SimpleSigner},
     mint::{
-        Mint, ReissueRequest, ReissueShare, ReissueTransaction, SimpleSpendBook, SpendBook,
+        MintNode, ReissueRequest, ReissueShare, ReissueTransaction, SimpleSpendBook, SpendBook,
         GENESIS_DBC_INPUT,
     },
 };

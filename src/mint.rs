@@ -14,8 +14,8 @@
 // Outputs <= input value
 
 use crate::{
-    Amount, Dbc, DbcContent, DbcContentHash, DbcTransaction, Error, Hash, KeyManager, PublicKeySet,
-    Result,
+    Dbc, DbcContent, DbcContentHash, DbcTransaction, Denomination, Error, Hash, KeyManager,
+    PublicKeySet, Result,
 };
 // use serde::{Deserialize, Serialize};
 use blsbs::{Envelope, SignedEnvelopeShare, SlipPreparer};
@@ -193,7 +193,7 @@ pub struct ReissueShare {
 
 // #[derive(Debug, Clone, Deserialize, Serialize)]
 #[derive(Debug, Clone)]
-pub struct Mint<K, S>
+pub struct MintNode<K, S>
 where
     K: KeyManager,
     S: SpendBook,
@@ -202,7 +202,7 @@ where
     pub spendbook: S,
 }
 
-impl<K: KeyManager, S: SpendBook> Mint<K, S> {
+impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
     pub fn new(key_manager: K, spendbook: S) -> Self {
         Self {
             key_manager,
@@ -212,7 +212,6 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
 
     pub fn issue_genesis_dbc(
         &mut self,
-        _amount: Amount,
     ) -> Result<(
         DbcContent,
         DbcTransaction,
@@ -221,7 +220,7 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
         Vec<SignedEnvelopeShare>,
     )> {
         let slip_preparer = SlipPreparer::from_fr(1); // deterministic/known
-        let content = DbcContent::new_with_nonce(GENESIS_DBC_INPUT.0, Amount::Genesis); // deterministic/known
+        let content = DbcContent::new_with_nonce(GENESIS_DBC_INPUT.0, Denomination::Genesis); // deterministic/known
         let envelope = slip_preparer.place_slip_in_envelope(&content.slip());
 
         println!("slip_preparer: {:?}", slip_preparer);
@@ -371,26 +370,29 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quickcheck_macros::quickcheck;
+    // use quickcheck_macros::quickcheck;
 
     use crate::{
         // tests::{TinyInt, TinyVec},
-        // DbcBuilder, SimpleKeyManager, SimpleSigner,
+        DbcBuilder,
+        Output, //  SimpleKeyManager, SimpleSigner,
         SimpleKeyManager,
         SimpleSigner,
+        TransactionBuilder,
     };
 
-    // #[quickcheck]
-    #[test]
-    fn prop_genesis() -> Result<(), Error> {
+    fn genesis() -> Result<(
+        Dbc,
+        MintNode<SimpleKeyManager, SimpleSpendBook>,
+        bls_dkg::outcome::Outcome,
+    )> {
         let genesis_owner = crate::bls_dkg_id();
-        // let genesis_key = genesis_owner.public_key_set.public_key();
 
         let key_manager = SimpleKeyManager::new(
             SimpleSigner::from(genesis_owner.clone()),
             genesis_owner.public_key_set.public_key(),
         );
-        let mut genesis_node = Mint::new(key_manager, SimpleSpendBook::new());
+        let mut genesis_node = MintNode::new(key_manager, SimpleSpendBook::new());
 
         let (
             gen_dbc_content,
@@ -398,7 +400,7 @@ mod tests {
             slip_preparer,
             mint_public_key_set,
             signed_envelope_shares,
-        ) = genesis_node.issue_genesis_dbc(Amount::Thousand).unwrap();
+        ) = genesis_node.issue_genesis_dbc().unwrap();
 
         let ses = &signed_envelope_shares[0];
 
@@ -415,11 +417,18 @@ mod tests {
             mint_signature,
         };
 
-        // let genesis_amount = DbcHelper::decrypt_amount(&genesis_owner, &genesis_dbc.content)?;
+        Ok((genesis_dbc, genesis_node, genesis_owner))
+    }
 
-        let validation = genesis_dbc.confirm_valid(genesis_node.key_manager());
-        println!("{:?}", validation);
-        assert!(validation.is_ok());
+    // #[quickcheck]
+    #[test]
+    fn prop_genesis() -> Result<(), Error> {
+        let (genesis_dbc, genesis_node, _genesis_owner) = genesis()?;
+
+        assert_eq!(genesis_dbc.denomination(), Denomination::Genesis);
+        assert!(genesis_dbc
+            .confirm_valid(genesis_node.key_manager())
+            .is_ok());
 
         Ok(())
     }
@@ -427,43 +436,32 @@ mod tests {
     // #[quickcheck]
     #[test]
     fn reissue_genesis() -> Result<(), Error> {
-        let genesis_owner = crate::bls_dkg_id();
-        // let genesis_key = genesis_owner.public_key_set.public_key();
+        let (genesis_dbc, mut genesis_node, _genesis_owner) = genesis()?;
 
-        let key_manager = SimpleKeyManager::new(
-            SimpleSigner::from(genesis_owner.clone()),
-            genesis_owner.public_key_set.public_key(),
-        );
-        let mut genesis_node = Mint::new(key_manager, SimpleSpendBook::new());
+        assert!(genesis_dbc
+            .confirm_valid(genesis_node.key_manager())
+            .is_ok());
 
-        let (
-            gen_dbc_content,
-            _gen_dbc_trans,
-            slip_preparer,
-            mint_public_key_set,
-            signed_envelope_shares,
-        ) = genesis_node.issue_genesis_dbc(Amount::Thousand).unwrap();
+        let (tx, outputs_content) = TransactionBuilder::default()
+            .add_input(genesis_dbc.clone())
+            .add_output(Output {
+                denomination: Denomination::Genesis,
+            })
+            .build()?;
 
-        let ses = &signed_envelope_shares[0];
-
-        let mint_signature = mint_public_key_set
-            .combine_signatures(vec![(
-                ses.signature_share_index(),
-                &ses.signature_share_for_slip(slip_preparer.blinding_factor())?,
-            )])
-            .unwrap();
-
-        let genesis_dbc = Dbc {
-            content: gen_dbc_content,
-            mint_public_key: mint_public_key_set.public_key(),
-            mint_signature,
+        let rr = ReissueRequest {
+            transaction: tx.clone(),
         };
 
-        // let genesis_amount = DbcHelper::decrypt_amount(&genesis_owner, &genesis_dbc.content)?;
+        let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
-        let validation = genesis_dbc.confirm_valid(genesis_node.key_manager());
-        println!("{:?}", validation);
-        assert!(validation.is_ok());
+        let dbcs = DbcBuilder::new(tx)
+            .add_outputs_content(outputs_content)
+            .add_reissue_share(rs)
+            .build()?;
+
+        assert_eq!(dbcs.len(), 1);
+        assert_eq!(dbcs[0].denomination(), genesis_dbc.denomination());
 
         Ok(())
     }

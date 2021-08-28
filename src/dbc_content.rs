@@ -40,8 +40,34 @@ pub enum Denomination {
 }
 
 impl Denomination {
-    fn to_be_bytes(self) -> [u8; 1] {
+    pub fn to_be_bytes(self) -> [u8; 1] {
         (self as u8).to_be_bytes()
+    }
+
+    pub fn amount(&self) -> Amount {
+        match *self {
+            Self::One => 1u64,
+            Self::Ten => 10u64,
+            Self::Hundred => 100u64,
+            Self::Thousand => 1000u64,
+            Self::TenThousand => 10000u64,
+            Self::HundredThousand => 100000u64,
+            Self::Million => 1000000u64,
+            Self::TenMillion => 10000000u64,
+            Self::HundredMillion => 100000000u64,
+            Self::Billion => 1000000000u64,
+            Self::TenBillion => 10000000000u64,
+            Self::HundredBillion => 100000000000u64,
+            Self::Trillion => 1000000000000u64,
+            Self::TenTrillion => 10000000000000u64,
+            Self::HundredTrillion => 100000000000000u64,
+            Self::Quadrillion => 1000000000000000u64,
+            Self::TenQuadrillion => 10000000000000000u64,
+            Self::HundredQuadrillion => 100000000000000000u64,
+            Self::Quintillion => 1000000000000000000u64,
+            Self::TenQuintillion => 10000000000000000000u64,
+            Self::Genesis => u64::MAX,
+        }
     }
 }
 
@@ -76,7 +102,7 @@ impl TryFrom<u64> for Denomination {
     }
 }
 
-pub type Amount = Denomination; // For now.
+pub type Amount = u64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DbcContent {
@@ -84,34 +110,41 @@ pub struct DbcContent {
     // this is only a hint, DBC recipient(s) must validate Mint's sig and check
     // Denomination of mint's pubkey.
     // idea:  amount == derivation index of pubkey.
-    amount: Denomination,
+    denomination: Denomination,
 }
 
 impl DbcContent {
-    pub fn new(amount: Denomination) -> Self {
+    pub fn new(denomination: Denomination) -> Self {
         Self {
             nonce: rand::thread_rng().gen::<[u8; 32]>(),
-            amount,
+            denomination,
         }
     }
 
-    pub fn new_with_nonce(nonce: [u8; 32], amount: Denomination) -> Self {
-        Self { nonce, amount }
+    pub fn new_with_nonce(nonce: [u8; 32], denomination: Denomination) -> Self {
+        Self {
+            nonce,
+            denomination,
+        }
     }
 
     pub fn slip(&self) -> Slip {
         let mut slip: Slip = Default::default();
-        slip.extend(self.amount.to_be_bytes());
+        slip.extend(self.denomination.to_be_bytes());
         slip
     }
 
     pub fn hash(&self) -> DbcContentHash {
         let mut sha3 = Sha3::v256();
         sha3.update(&self.nonce);
-        sha3.update(&self.amount.to_be_bytes());
+        sha3.update(&self.denomination.to_be_bytes());
 
         let mut hash = [0; 32];
         sha3.finalize(&mut hash);
         Hash(hash)
+    }
+
+    pub fn denomination(&self) -> Denomination {
+        self.denomination
     }
 }
