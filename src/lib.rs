@@ -10,13 +10,13 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
-#[cfg(test)]
-use tiny_keccak::{Hasher, Sha3};
+// #[cfg(test)]
+// use tiny_keccak::{Hasher, Sha3};
 /// These typdefs are to simplify algorithm for now and will be removed for production.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hash([u8; 32]);
 pub(crate) type DbcContentHash = Hash;
-mod builder;
+//mod builder;
 mod dbc;
 mod dbc_content;
 mod dbc_transaction;
@@ -25,17 +25,17 @@ mod key_manager;
 mod mint;
 
 pub use crate::{
-    builder::{DbcBuilder, Output, TransactionBuilder},
+  //  builder::{DbcBuilder, Output, TransactionBuilder},
     dbc::Dbc,
-    dbc_content::{Amount, AmountSecrets, BlindedOwner, DbcContent},
+    dbc_content::{Amount, DbcContent},
     dbc_transaction::DbcTransaction,
     error::{Error, Result},
     key_manager::{
-        KeyManager, NodeSignature, PublicKey, PublicKeySet, Signature, SimpleKeyManager,
+        KeyManager, PublicKey, PublicKeySet, Signature, SimpleKeyManager,
         SimpleSigner,
     },
     mint::{
-        Mint, MintNodeSignatures, ReissueRequest, ReissueShare, ReissueTransaction,
+        Mint, ReissueRequest, ReissueShare, ReissueTransaction,
         SimpleSpendBook, SpendBook, GENESIS_DBC_INPUT,
     },
 };
@@ -107,29 +107,7 @@ pub fn bls_dkg_id() -> bls_dkg::outcome::Outcome {
     outcome
 }
 
-#[cfg(feature = "dkg")]
-pub struct DbcHelper {}
-
-#[cfg(feature = "dkg")]
-impl DbcHelper {
-    pub fn decrypt_amount_secrets(
-        owner: &bls_dkg::outcome::Outcome,
-        dbcc: &DbcContent,
-    ) -> Result<AmountSecrets, Error> {
-        let mut shares: std::collections::BTreeMap<usize, bls_dkg::SecretKeyShare> =
-            Default::default();
-        shares.insert(owner.index, owner.secret_key_share.clone());
-
-        dbcc.amount_secrets_by_secret_key_shares(&owner.public_key_set, &shares)
-    }
-
-    pub fn decrypt_amount(
-        owner: &bls_dkg::outcome::Outcome,
-        dbcc: &DbcContent,
-    ) -> Result<Amount, Error> {
-        Ok(Self::decrypt_amount_secrets(owner, dbcc)?.amount)
-    }
-}
+/*
 
 #[cfg(test)]
 fn sha3_256(input: &[u8]) -> [u8; 32] {
@@ -244,3 +222,4 @@ mod tests {
         assert_eq!(sha3_256(data), *expected);
     }
 }
+*/

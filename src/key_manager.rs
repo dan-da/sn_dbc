@@ -6,53 +6,60 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{Error, Hash, Result};
-use blsttc::{serde_impl::SerdeSecret, SecretKeyShare, SignatureShare};
+use crate::{Error, Result};
+use blsttc::{SecretKeyShare};
 pub use blsttc::{PublicKey, PublicKeySet, Signature};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use blsbs::{BlindSignerShare, Slip, Envelope, SignedEnvelopeShare, SignatureExaminer};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
-pub struct NodeSignature {
-    index: u64,
-    sig: SignatureShare,
-}
+// #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
+// pub struct NodeSignature {
+//     index: u64,
+//     sig: SignatureShare,
+// }
 
-impl NodeSignature {
-    pub fn new(index: u64, sig: SignatureShare) -> Self {
-        Self { index, sig }
-    }
+// impl NodeSignature {
+//     pub fn new(index: u64, sig: SignatureShare) -> Self {
+//         Self { index, sig }
+//     }
 
-    pub fn threshold_crypto(&self) -> (u64, &SignatureShare) {
-        (self.index, &self.sig)
-    }
-}
+//     pub fn threshold_crypto(&self) -> (u64, &SignatureShare) {
+//         (self.index, &self.sig)
+//     }
+// }
 
 pub trait KeyManager {
     type Error: std::error::Error;
-    fn sign(&self, msg_hash: &Hash) -> Result<NodeSignature, Self::Error>;
+    fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare, Self::Error>;
     fn public_key_set(&self) -> Result<PublicKeySet, Self::Error>;
-    fn verify(
+    fn verify_slip(
         &self,
-        msg_hash: &Hash,
+        slip: &Slip,
+        key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<(), Self::Error>;
+    fn verify_envelope(
+        &self,
+        envelope: &Envelope,
         key: &PublicKey,
         signature: &Signature,
     ) -> Result<(), Self::Error>;
     fn verify_known_key(&self, key: &PublicKey) -> Result<(), Self::Error>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SimpleSigner {
-    public_key_set: PublicKeySet,
-    secret_key_share: (u64, SerdeSecret<SecretKeyShare>),
+    blind_signer_share: BlindSignerShare,
 }
 
 #[cfg(feature = "dkg")]
 impl From<bls_dkg::outcome::Outcome> for SimpleSigner {
     fn from(outcome: bls_dkg::outcome::Outcome) -> Self {
+        
         Self {
-            public_key_set: outcome.public_key_set,
-            secret_key_share: (outcome.index as u64, SerdeSecret(outcome.secret_key_share)),
+            blind_signer_share: BlindSignerShare::new(outcome.secret_key_share, outcome.index, outcome.public_key_set),
         }
     }
 }
@@ -60,25 +67,25 @@ impl From<bls_dkg::outcome::Outcome> for SimpleSigner {
 impl SimpleSigner {
     pub fn new(public_key_set: PublicKeySet, secret_key_share: (u64, SecretKeyShare)) -> Self {
         Self {
-            public_key_set,
-            secret_key_share: (secret_key_share.0, SerdeSecret(secret_key_share.1)),
+            blind_signer_share: BlindSignerShare::new(secret_key_share.1, secret_key_share.0, public_key_set),
         }
     }
 
-    fn index(&self) -> u64 {
-        self.secret_key_share.0
+    fn public_key_set(&self) -> &PublicKeySet {
+        self.blind_signer_share.public_key_set()
     }
 
-    fn public_key_set(&self) -> PublicKeySet {
-        self.public_key_set.clone()
+    fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare> {
+        self.blind_signer_share.sign_envelope(envelope).map_err(|e| Error::from(e))
     }
 
-    fn sign<M: AsRef<[u8]>>(&self, msg: M) -> blsttc::SignatureShare {
-        self.secret_key_share.1.sign(msg)
-    }
+    // fn sign<M: AsRef<[u8]>>(&self, msg: M) -> blsttc::SignatureShare {
+    //     self.blind_signer_share.sign(msg)
+    // }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SimpleKeyManager {
     signer: SimpleSigner,
     genesis_key: PublicKey,
@@ -103,18 +110,19 @@ impl KeyManager for SimpleKeyManager {
     type Error = crate::Error;
 
     fn public_key_set(&self) -> Result<PublicKeySet> {
-        Ok(self.signer.public_key_set())
+        Ok(self.signer.public_key_set().clone())
     }
 
-    fn sign(&self, msg_hash: &Hash) -> Result<NodeSignature> {
-        Ok(NodeSignature::new(
-            self.signer.index(),
-            self.signer.sign(msg_hash),
-        ))
+    fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare> {
+        self.signer.sign_envelope(envelope)
     }
 
-    fn verify(&self, msg_hash: &Hash, key: &PublicKey, signature: &Signature) -> Result<()> {
-        self.cache.verify(msg_hash, key, signature)
+    fn verify_slip(&self, slip: &Slip, key: &PublicKey, signature: &Signature) -> Result<()> {
+        self.cache.verify_slip(slip, key, signature)
+    }
+
+    fn verify_envelope(&self, envelope: &Envelope, key: &PublicKey, signature: &Signature) -> Result<()> {
+        self.cache.verify_envelope(envelope, key, signature)
     }
 
     fn verify_known_key(&self, key: &PublicKey) -> Result<()> {
@@ -136,9 +144,20 @@ impl Keys {
         self.0.insert(key);
     }
 
-    fn verify(&self, msg: &Hash, key: &PublicKey, sig: &Signature) -> Result<()> {
+    fn verify_slip(&self, slip: &Slip, key: &PublicKey, sig: &Signature) -> Result<()> {
         self.verify_known_key(key)?;
-        if key.verify(sig, msg) {
+        let is_verified = SignatureExaminer::verify_signature_on_slip(slip, sig, key);
+        if is_verified {
+            Ok(())
+        } else {
+            Err(Error::FailedSignature)
+        }
+    }
+
+    fn verify_envelope(&self, envelope: &Envelope, key: &PublicKey, sig: &Signature) -> Result<()> {
+        self.verify_known_key(key)?;
+        let is_verified = SignatureExaminer::verify_signature_on_envelope(envelope, sig, key);
+        if is_verified {
             Ok(())
         } else {
             Err(Error::FailedSignature)

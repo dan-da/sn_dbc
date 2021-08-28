@@ -18,11 +18,12 @@ thiserror = "1.0.24"
 quickcheck = "1"
 quickcheck_macros = "1"
 rand = "0.7.1"
-bulletproofs = "4.0.0"
 curve25519-dalek-ng = "4.0.1"
-merlin = "3.0.0"
-blsttc = "2.3.0"
 hex = "0.4.3"
+#blsbs = {git="https://github.com/dan-da/blsbs"}
+blsbs = {path="/home/danda/dev/maidsafe/blsbs"}
+blsttc = "3.1.0"
+
 
   [dependencies.rand8]
   package = "rand"
@@ -31,6 +32,8 @@ hex = "0.4.3"
   [dependencies.bls_dkg]
   version = "~0.6"
   optional = true
+  path = "/home/danda/dev/maidsafe/bls_dkg"
+
 
   [dependencies.tiny-keccak]
   version = "2.0.0"
@@ -39,6 +42,10 @@ hex = "0.4.3"
   [dependencies.serde]
   version = "1.0.111"
   features = [ "derive", "rc" ]
+
+
+#[patch.crates-io]
+#bls_dkg = { path = "/home/danda/dev/maidsafe/bls_dkg" }
 
 [dev-dependencies]
 criterion = "0.3"
@@ -61,6 +68,6 @@ name = "reissue"
 harness = false
 required-features = [ "dkg" ]
 
-[[example]]
-name = "mint-repl"
-path = "examples/mint-repl/mint-repl.rs"
+#[[example]]
+#name = "mint-repl"
+#path = "examples/mint-repl/mint-repl.rs"

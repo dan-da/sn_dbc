@@ -7,21 +7,22 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{DbcContentHash, Hash};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+// use serde::{Deserialize, Serialize};
+use std::collections::{HashSet, BTreeSet};
 use tiny_keccak::{Hasher, Sha3};
+use blsbs::Envelope;
 
 /// The spent identifier of the outputs created from this input
 /// Note these are hashes and not identifiers as the Dbc is not addressable on the network.
 /// i.e. a Dbc can be stored anywhere, even offline.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbcTransaction {
     pub inputs: BTreeSet<DbcContentHash>,
-    pub outputs: BTreeSet<DbcContentHash>,
+    pub outputs: HashSet<Envelope>,
 }
 
 impl DbcTransaction {
-    pub fn new(inputs: BTreeSet<DbcContentHash>, outputs: BTreeSet<DbcContentHash>) -> Self {
+    pub fn new(inputs: BTreeSet<DbcContentHash>, outputs: HashSet<Envelope>) -> Self {
         Self { inputs, outputs }
     }
 
@@ -32,7 +33,8 @@ impl DbcTransaction {
         }
 
         for output in self.outputs.iter() {
-            sha3.update(output);
+            let bytes: [u8; 96] = output.clone().to_bytes();
+            sha3.update(&bytes);
         }
 
         let mut hash = [0; 32];
@@ -42,7 +44,7 @@ impl DbcTransaction {
 }
 
 // 1. test that adding inputs / outputs in different order produces the same hash
-
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,3 +79,4 @@ mod tests {
         assert_eq!(forward_hash, reverse_hash);
     }
 }
+*/

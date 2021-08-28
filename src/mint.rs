@@ -15,16 +15,16 @@
 
 use crate::{
     Amount, Dbc, DbcContent, DbcContentHash, DbcTransaction, Error, Hash, KeyManager,
-    NodeSignature, PublicKeySet, Result,
+    PublicKeySet, Result,
 };
-use curve25519_dalek_ng::ristretto::RistrettoPoint;
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     iter::FromIterator,
 };
+use blsbs::{SlipPreparer, Envelope, SignedEnvelopeShare};
 
-pub type MintNodeSignatures = BTreeMap<DbcContentHash, (PublicKeySet, NodeSignature)>;
+// pub type MintNodeSignatures = BTreeMap<Envelope, (PublicKeySet, SignedEnvelopeShare)>;
 
 pub const GENESIS_DBC_INPUT: Hash = Hash([0u8; 32]);
 
@@ -39,7 +39,8 @@ pub trait SpendBook: std::fmt::Debug + Clone {
     ) -> Result<(), Self::Error>;
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+// #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone)]
 pub struct SimpleSpendBook {
     pub transactions: BTreeMap<DbcContentHash, DbcTransaction>,
 }
@@ -87,17 +88,18 @@ impl SimpleSpendBook {
     }
 }
 
-#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
+// #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueTransaction {
     pub inputs: HashSet<Dbc>,
-    pub outputs: HashSet<DbcContent>,
+    pub outputs: HashSet<Envelope>,
 }
 
 impl ReissueTransaction {
     pub fn blinded(&self) -> DbcTransaction {
         DbcTransaction {
             inputs: BTreeSet::from_iter(self.inputs.iter().map(|i| i.name())),
-            outputs: BTreeSet::from_iter(self.outputs.iter().map(|i| i.hash())),
+            outputs: self.outputs.clone(),
         }
     }
 
@@ -109,47 +111,50 @@ impl ReissueTransaction {
     }
 
     fn validate_balance(&self) -> Result<()> {
-        // Calculate sum(input_commitments) and sum(output_commitments)
-        let inputs: RistrettoPoint = self
-            .inputs
-            .iter()
-            .map(|input| {
-                input
-                    .content
-                    .commitment
-                    .decompress()
-                    .ok_or(Error::AmountCommitmentInvalid)
-            })
-            .sum::<Result<RistrettoPoint, _>>()?;
-        let outputs: RistrettoPoint = self
-            .outputs
-            .iter()
-            .map(|output| {
-                output
-                    .commitment
-                    .decompress()
-                    .ok_or(Error::AmountCommitmentInvalid)
-            })
-            .sum::<Result<RistrettoPoint, _>>()?;
+        // fixme: validate that sum(inputs) == sum(outputs)
+        Ok(())
 
-        // Verify the range proof for each output.  (bulletproof)
-        // This validates that the committed amount is a positive value.
-        // (somewhere in the range 0..u64::max)
-        //
-        // TODO: investigate is there some way we could use RangeProof::verify_multiple() instead?
-        // batched verifications should be faster.  It would seem to require that client call
-        // RangeProof::prove_multiple() over all output DBC amounts. But then where to store the aggregated
-        // RangeProof?  It corresponds to a set of outputs, not a single DBC. Would it make sense to store
-        // a dup copy in each?  Unlike eg Monero we do not have a long-lived Transaction to store such data.
-        for output in self.outputs.iter() {
-            output.verify_range_proof()?;
-        }
+        // // Calculate sum(input_commitments) and sum(output_commitments)
+        // let inputs: RistrettoPoint = self
+        //     .inputs
+        //     .iter()
+        //     .map(|input| {
+        //         input
+        //             .content
+        //             .commitment
+        //             .decompress()
+        //             .ok_or(Error::AmountCommitmentInvalid)
+        //     })
+        //     .sum::<Result<RistrettoPoint, _>>()?;
+        // let outputs: RistrettoPoint = self
+        //     .outputs
+        //     .iter()
+        //     .map(|output| {
+        //         output
+        //             .commitment
+        //             .decompress()
+        //             .ok_or(Error::AmountCommitmentInvalid)
+        //     })
+        //     .sum::<Result<RistrettoPoint, _>>()?;
 
-        if inputs != outputs {
-            Err(Error::DbcReissueRequestDoesNotBalance)
-        } else {
-            Ok(())
-        }
+        // // Verify the range proof for each output.  (bulletproof)
+        // // This validates that the committed amount is a positive value.
+        // // (somewhere in the range 0..u64::max)
+        // //
+        // // TODO: investigate is there some way we could use RangeProof::verify_multiple() instead?
+        // // batched verifications should be faster.  It would seem to require that client call
+        // // RangeProof::prove_multiple() over all output DBC amounts. But then where to store the aggregated
+        // // RangeProof?  It corresponds to a set of outputs, not a single DBC. Would it make sense to store
+        // // a dup copy in each?  Unlike eg Monero we do not have a long-lived Transaction to store such data.
+        // for output in self.outputs.iter() {
+        //     output.verify_range_proof()?;
+        // }
+
+        // if inputs != outputs {
+        //     Err(Error::DbcReissueRequestDoesNotBalance)
+        // } else {
+        //     Ok(())
+        // }
     }
 
     fn validate_input_dbcs<K: KeyManager>(&self, verifier: &K) -> Result<()> {
@@ -165,30 +170,30 @@ impl ReissueTransaction {
     }
 
     fn validate_outputs(&self) -> Result<()> {
-        // Validate output parents match the blinded inputs
-        let inputs = self.blinded().inputs;
-        if self.outputs.iter().any(|o| o.parents != inputs) {
-            return Err(Error::DbcContentParentsDifferentFromTransactionInputs);
-        }
+
+        // Todo: outputs are opaque to mint.  anything to do here?
 
         Ok(())
     }
 }
 
-#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
+// #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueRequest {
     pub transaction: ReissueTransaction,
-    // Signatures from the owners of each input, signing `self.transaction.blinded().hash()`
-    pub input_ownership_proofs: HashMap<DbcContentHash, (blsttc::PublicKey, blsttc::Signature)>,
 }
 
-#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
+// #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueShare {
     pub dbc_transaction: DbcTransaction,
-    pub mint_node_signatures: MintNodeSignatures,
+    pub signed_envelope_shares: Vec<SignedEnvelopeShare>,
+    pub public_key_set: PublicKeySet,
+    // pub mint_node_signatures: MintNodeSignatures,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+// #[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Mint<K, S>
 where
     K: KeyManager,
@@ -208,21 +213,19 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
 
     pub fn issue_genesis_dbc(
         &mut self,
-        amount: Amount,
-    ) -> Result<(DbcContent, DbcTransaction, (PublicKeySet, NodeSignature))> {
-        let parents = BTreeSet::from_iter([GENESIS_DBC_INPUT]);
-        let content = DbcContent::new(
-            parents,
-            amount,
-            self.key_manager
-                .public_key_set()
-                .map_err(|e| Error::Signing(e.to_string()))?
-                .public_key(),
-            DbcContent::random_blinding_factor(),
-        )?;
+        _amount: Amount,
+    ) -> Result<(DbcContent, DbcTransaction, SlipPreparer, PublicKeySet, Vec<SignedEnvelopeShare>)> {
+        let slip_preparer = SlipPreparer::from_fr(1);          // deterministic/known
+        let content = DbcContent::from(GENESIS_DBC_INPUT.0);   // deterministic/known
+        let envelope = slip_preparer.place_slip_in_envelope(&content.slip());
+
+        println!("slip_preparer: {:?}", slip_preparer);
+        println!("content: {:?}", content);
+        println!("envelope: {:?}", envelope);
+
         let transaction = DbcTransaction {
             inputs: BTreeSet::from_iter([GENESIS_DBC_INPUT]),
-            outputs: BTreeSet::from_iter([content.hash()]),
+            outputs: HashSet::from_iter([envelope.clone()]),
         };
 
         match self
@@ -237,20 +240,24 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
         self.spendbook
             .log(GENESIS_DBC_INPUT, transaction.clone())
             .map_err(|e| Error::SpendBook(e.to_string()))?;
-        let transaction_sig = self
+
+        let signed_envelope_shares = vec![self
             .key_manager
-            .sign(&transaction.hash())
+            .sign_envelope(envelope)
+            .map_err(|e| Error::Signing(e.to_string()))?];
+
+        println!("signed_envelope_shares: {:#?}", signed_envelope_shares);
+
+        let public_key_set = self.key_manager
+            .public_key_set()
             .map_err(|e| Error::Signing(e.to_string()))?;
 
         Ok((
             content,
             transaction,
-            (
-                self.key_manager
-                    .public_key_set()
-                    .map_err(|e| Error::Signing(e.to_string()))?,
-                transaction_sig,
-            ),
+            slip_preparer,
+            public_key_set,
+            signed_envelope_shares,
         ))
     }
 
@@ -272,41 +279,39 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
         inputs_belonging_to_mint: BTreeSet<DbcContentHash>,
     ) -> Result<ReissueShare> {
         reissue_req.transaction.validate(self.key_manager())?;
-        let transaction = reissue_req.transaction.blinded();
-        let transaction_hash = transaction.hash();
+        let dbc_transaction = reissue_req.transaction.blinded();
 
-        for input_dbc in reissue_req.transaction.inputs.iter() {
-            match reissue_req.input_ownership_proofs.get(&input_dbc.name()) {
-                Some((owner, sig)) if owner.verify(sig, &transaction_hash) => {
-                    input_dbc.content.validate_unblinding(owner)?;
-                }
-                Some(_) => return Err(Error::FailedSignature),
-                None => return Err(Error::MissingInputOwnerProof),
-            }
-        }
-
-        if !inputs_belonging_to_mint.is_subset(&transaction.inputs) {
+        if !inputs_belonging_to_mint.is_subset(&dbc_transaction.inputs) {
+            // fixme:  better error name?
             return Err(Error::FilteredInputNotPresent);
         }
 
+        // todo: validate that each input has mint's sig and detect
+        // amount(s) from Mint Sig.
+
+        let public_key_set = self.key_manager.public_key_set().map_err(|e| Error::Signing(e.to_string()))?;
+        
         // Validate that each input has not yet been spent.
         for input in inputs_belonging_to_mint.iter() {
-            if let Some(transaction) = self
+            if let Some(dbc_transaction) = self
                 .spendbook
                 .lookup(input)
                 .map_err(|e| Error::SpendBook(e.to_string()))?
                 .cloned()
             {
                 // This input has already been spent, return the spend transaction to the user
-                let transaction_sigs = self.sign_transaction(&transaction)?;
+                // fixme:  shouldn't we already have full mint sig from the spendbook?
+                //         we shouldn't need to sign again with a sigshare.
+                let signed_envelope_shares = self.sign_output_envelopes(&dbc_transaction)?;
                 return Err(Error::DbcAlreadySpent {
-                    transaction,
-                    transaction_sigs,
+                    dbc_transaction,
+                    public_key_set,
+                    signed_envelope_shares,
                 });
             }
         }
 
-        let transaction_sigs = self.sign_transaction(&transaction)?;
+        let signed_envelope_shares = self.sign_output_envelopes(&dbc_transaction)?;
 
         for input in reissue_req
             .transaction
@@ -315,38 +320,28 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
             .filter(|&i| inputs_belonging_to_mint.contains(&i.name()))
         {
             self.spendbook
-                .log(input.name(), transaction.clone())
+                .log(input.name(), dbc_transaction.clone())
                 .map_err(|e| Error::SpendBook(e.to_string()))?;
         }
 
         let reissue_share = ReissueShare {
-            dbc_transaction: transaction,
-            mint_node_signatures: transaction_sigs,
+            dbc_transaction,
+            signed_envelope_shares,
+            public_key_set,
         };
 
         Ok(reissue_share)
     }
 
-    fn sign_transaction(
+    fn sign_output_envelopes(
         &self,
         transaction: &DbcTransaction,
-    ) -> Result<BTreeMap<DbcContentHash, (PublicKeySet, NodeSignature)>> {
-        let sig = self
-            .key_manager
-            .sign(&transaction.hash())
-            .map_err(|e| Error::Signing(e.to_string()))?;
-
-        Ok(transaction
-            .inputs
+    ) -> Result<Vec<SignedEnvelopeShare>> {
+        transaction
+            .outputs
             .iter()
-            .copied()
-            .zip(std::iter::repeat((
-                self.key_manager
-                    .public_key_set()
-                    .map_err(|e| Error::Signing(e.to_string()))?,
-                sig,
-            )))
-            .collect())
+            .map(|e| self.key_manager.sign_envelope(e.clone()).map_err(|e| Error::Signing(e.to_string())))
+            .collect::<Result<_>>()
     }
 
     // Used in testing / benchmarking
@@ -363,18 +358,19 @@ impl<K: KeyManager, S: SpendBook> Mint<K, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blsttc::{Ciphertext, DecryptionShare, SecretKeyShare};
     use quickcheck_macros::quickcheck;
 
     use crate::{
-        tests::{TinyInt, TinyVec},
-        DbcBuilder, DbcHelper, SimpleKeyManager, SimpleSigner,
+        // tests::{TinyInt, TinyVec},
+        // DbcBuilder, SimpleKeyManager, SimpleSigner,
+        SimpleKeyManager, SimpleSigner,
     };
 
-    #[quickcheck]
+    // #[quickcheck]
+    #[test]
     fn prop_genesis() -> Result<(), Error> {
         let genesis_owner = crate::bls_dkg_id();
-        let genesis_key = genesis_owner.public_key_set.public_key();
+        // let genesis_key = genesis_owner.public_key_set.public_key();
 
         let key_manager = SimpleKeyManager::new(
             SimpleSigner::from(genesis_owner.clone()),
@@ -382,31 +378,30 @@ mod tests {
         );
         let mut genesis_node = Mint::new(key_manager, SimpleSpendBook::new());
 
-        let (gen_dbc_content, gen_dbc_trans, (gen_key_set, gen_node_sig)) =
-            genesis_node.issue_genesis_dbc(1000).unwrap();
+        let (gen_dbc_content, _gen_dbc_trans, slip_preparer, mint_public_key_set, signed_envelope_shares) =
+            genesis_node.issue_genesis_dbc(Amount::Thousand).unwrap();
 
-        let genesis_sig = gen_key_set
-            .combine_signatures(vec![gen_node_sig.threshold_crypto()])
+        let ses = &signed_envelope_shares[0];
+
+        let mint_signature = mint_public_key_set
+            .combine_signatures(vec![(ses.signature_share_index(), &ses.signature_share_for_slip(slip_preparer.blinding_factor())?)])
             .unwrap();
 
         let genesis_dbc = Dbc {
             content: gen_dbc_content,
-            transaction: gen_dbc_trans,
-            transaction_sigs: BTreeMap::from_iter([(
-                GENESIS_DBC_INPUT,
-                (genesis_key, genesis_sig),
-            )]),
+            mint_public_key: mint_public_key_set.public_key(),
+            mint_signature,
         };
 
-        let genesis_amount = DbcHelper::decrypt_amount(&genesis_owner, &genesis_dbc.content)?;
+        // let genesis_amount = DbcHelper::decrypt_amount(&genesis_owner, &genesis_dbc.content)?;
 
-        assert_eq!(genesis_amount, 1000);
         let validation = genesis_dbc.confirm_valid(genesis_node.key_manager());
+        println!("{:?}", validation);
         assert!(validation.is_ok());
 
         Ok(())
     }
-
+/*
     #[quickcheck]
     fn prop_splitting_the_genesis_dbc(output_amounts: TinyVec<TinyInt>) -> Result<(), Error> {
         let output_amounts =
@@ -929,248 +924,5 @@ mod tests {
 
         Ok(())
     }
-
-    /// This tests how the system handles a mis-match between the
-    /// committed amount and amount encrypted in AmountSecrets.
-    /// Normally these should be the same, however a malicious user or buggy
-    /// implementation could produce different values.  The mint cannot detect
-    /// this situation and prevent it as the secret amount is encrypted.  So it
-    /// is up to the recipient to check that the amounts match upon receipt.  If they
-    /// do not match and the recipient cannot learn (or guess) the committed value then
-    /// the DBC will be unspendable. If they do learn the committed amount then it
-    /// can still be spent.  So herein we do the following to test:
-    ///
-    /// 1. produce a standard genesis DBC with value 1000
-    /// 2. reissue genesis DBC to an output with mis-matched amounts where the
-    ///      committed amount is 1000 (required to match input) but the secret
-    ///      amount is 2000.
-    /// 3. Check if the amounts match, using the two provided APIs.
-    ///      assert that APIs report they do not match.
-    /// 4. Attempt to reissue the mis-matched output using the amount from
-    ///      AmountSecrets.  Verify that this fails with error DbcReissueRequestDoesNotBalance
-    /// 5. Attempt to reissue using the correct amount that was committed to.
-    ///      Verify that this reissue succeeds.
-    #[test]
-    fn test_mismatched_amount_and_commitment() -> Result<(), Error> {
-        // ----------
-        // Phase 1. Creation of Genesis DBC
-        // ----------
-        let genesis_owner = crate::bls_dkg_id();
-        let genesis_key = genesis_owner.public_key_set.public_key();
-
-        let key_manager = SimpleKeyManager::new(
-            SimpleSigner::from(genesis_owner.clone()),
-            genesis_owner.public_key_set.public_key(),
-        );
-        let mut genesis_node = Mint::new(key_manager.clone(), SimpleSpendBook::new());
-
-        let (gen_dbc_content, gen_dbc_tx, (gen_key_set, gen_node_sig)) =
-            genesis_node.issue_genesis_dbc(1000)?;
-        let genesis_sig = gen_key_set.combine_signatures(vec![gen_node_sig.threshold_crypto()])?;
-
-        let genesis_dbc = Dbc {
-            content: gen_dbc_content,
-            transaction: gen_dbc_tx,
-            transaction_sigs: BTreeMap::from_iter([(
-                GENESIS_DBC_INPUT,
-                (genesis_key, genesis_sig),
-            )]),
-        };
-
-        let genesis_secrets =
-            DbcHelper::decrypt_amount_secrets(&genesis_owner, &genesis_dbc.content)?;
-
-        let outputs_owner = crate::bls_dkg_id();
-        let outputs_owner_pk = outputs_owner.public_key_set.public_key();
-        let output_amount = 1000;
-
-        let (mut transaction, _) = crate::TransactionBuilder::default()
-            .add_input(genesis_dbc.clone(), genesis_secrets)
-            .add_output(crate::Output {
-                amount: output_amount,
-                owner: outputs_owner_pk,
-            })
-            .build()?;
-
-        // ----------
-        // Phase 2. Creation of mis-matched output
-        // ----------
-
-        // Here we modify the transaction output to have a different committed amount than the secret amount.
-        // The sn_dbc API does not allow this so we manually modify the reissue transaction.
-        let mut out_dbc_content = std::mem::take(&mut transaction.outputs)
-            .into_iter()
-            .next()
-            .expect("We should have a single output");
-
-        // obtain amount secrets
-        let secrets = DbcHelper::decrypt_amount_secrets(&outputs_owner, &out_dbc_content)?;
-
-        // Replace the encrypted secret amount with an encrypted secret claiming
-        // twice the committed value.
-        let fudged_amount_secrets = crate::AmountSecrets {
-            amount: secrets.amount * 2, // Claim we are paying twice the committed value
-            blinding_factor: secrets.blinding_factor, // Use the real blinding factor
-        };
-
-        out_dbc_content.amount_secrets_cipher =
-            outputs_owner_pk.encrypt(fudged_amount_secrets.to_bytes().as_slice());
-
-        // Add the fudged output back into the reissue transaction.
-        transaction.outputs.insert(out_dbc_content);
-
-        let sig_share = genesis_node
-            .key_manager
-            .sign(&transaction.blinded().hash())?;
-
-        let sig = genesis_node
-            .key_manager
-            .public_key_set()?
-            .combine_signatures(vec![sig_share.threshold_crypto()])?;
-
-        let reissue_req = ReissueRequest {
-            transaction,
-            input_ownership_proofs: HashMap::from_iter([(
-                genesis_dbc.name(),
-                (genesis_node.key_manager.public_key_set()?.public_key(), sig),
-            )]),
-        };
-
-        // The mint should reissue this without error because the output commitment sum matches the
-        // input commitment sum.  However the recipient will be unable to spend it using the received
-        // secret amount.  The only way to spend it would be receive the true amount from the sender,
-        // or guess it.  And that's assuming the secret blinding_factor is correct, which it is in this
-        // case, but might not be in the wild.  So the output DBC could be considered to be in a
-        // semi-unspendable state.
-        let reissue_share = genesis_node.reissue(
-            reissue_req.clone(),
-            BTreeSet::from_iter([genesis_dbc.name()]),
-        )?;
-
-        // Aggregate ReissueShare to build output DBCs
-        let mut dbc_builder = DbcBuilder::new(reissue_req.transaction);
-        dbc_builder = dbc_builder.add_reissue_share(reissue_share);
-        let output_dbcs = dbc_builder.build()?;
-
-        let output_dbc = &output_dbcs[0];
-
-        // obtain decryption shares so we can call confirm_amount_matches_commitment()
-        let mut sk_shares: BTreeMap<usize, SecretKeyShare> = Default::default();
-        sk_shares.insert(0, outputs_owner.secret_key_share.clone());
-        let decrypt_shares =
-            gen_decryption_shares(&output_dbc.content.amount_secrets_cipher, &sk_shares);
-
-        // obtain amount secrets
-        let secrets = DbcHelper::decrypt_amount_secrets(&outputs_owner, &output_dbc.content)?;
-
-        // confirm the secret amount is 2000.
-        assert_eq!(secrets.amount, 1000 * 2);
-        // confirm the dbc is considered valid using the mint-accessible api.
-        assert!(output_dbc.confirm_valid(&key_manager).is_ok());
-        // confirm the mis-match is detectable by the user who has the key to access the secrets.
-        assert!(!output_dbc
-            .content
-            .confirm_provided_amount_matches_commitment(&secrets));
-        assert!(!output_dbc
-            .content
-            .confirm_amount_matches_commitment(&outputs_owner.public_key_set, &decrypt_shares)?);
-
-        // confirm that the sum of output secrets does not match the committed amount.
-        assert_ne!(
-            output_dbcs
-                .iter()
-                .map(|dbc| { DbcHelper::decrypt_amount(&outputs_owner, &dbc.content) })
-                .sum::<Result<Amount, _>>()?,
-            output_amount
-        );
-
-        // ----------
-        // Phase 3. Attempt reissue of mis-matched DBC using provided AmountSecrets
-        // ----------
-
-        // Next: attempt reissuing the output DBC:
-        //  a) with provided secret amount (in band for recipient).     (should fail)
-        //  b) with true committed amount (out of band for recipient).  (should succeed)
-
-        let input_dbc = output_dbc;
-        let input_secrets = DbcHelper::decrypt_amount_secrets(&outputs_owner, &input_dbc.content)?;
-
-        let (transaction, _) = crate::TransactionBuilder::default()
-            .add_input(input_dbc.clone(), input_secrets)
-            .add_output(crate::Output {
-                amount: input_secrets.amount,
-                owner: outputs_owner_pk,
-            })
-            .build()?;
-
-        let sig_share = outputs_owner
-            .secret_key_share
-            .sign(&transaction.blinded().hash());
-
-        let sig = outputs_owner
-            .public_key_set
-            .combine_signatures(vec![(outputs_owner.index, &sig_share)])?;
-
-        let reissue_req = ReissueRequest {
-            transaction,
-            input_ownership_proofs: HashMap::from_iter([(
-                input_dbc.name(),
-                (outputs_owner.public_key_set.public_key(), sig),
-            )]),
-        };
-
-        // The mint should give an error on reissue because the sum(inputs) does not equal sum(outputs)
-        let result = genesis_node.reissue(reissue_req, BTreeSet::from_iter([input_dbc.name()]));
-        match result {
-            Err(Error::DbcReissueRequestDoesNotBalance) => {}
-            _ => panic!("Expecting Error::DbcReissueRequestDoesNotBalance"),
-        }
-
-        // ----------
-        // Phase 4. Successful reissue of mis-matched DBC using true committed amount.
-        // ----------
-
-        let (transaction, _) = crate::TransactionBuilder::default()
-            .add_input(input_dbc.clone(), input_secrets)
-            .add_output(crate::Output {
-                amount: output_amount,
-                owner: outputs_owner_pk,
-            })
-            .build()?;
-
-        let sig_share = outputs_owner
-            .secret_key_share
-            .sign(&transaction.blinded().hash());
-
-        let sig = outputs_owner
-            .public_key_set
-            .combine_signatures(vec![(outputs_owner.index, &sig_share)])?;
-
-        let reissue_req = ReissueRequest {
-            transaction,
-            input_ownership_proofs: HashMap::from_iter([(
-                input_dbc.name(),
-                (outputs_owner.public_key_set.public_key(), sig),
-            )]),
-        };
-
-        // The mint should reissue without error because the sum(inputs) does equal sum(outputs)
-        let result = genesis_node.reissue(reissue_req, BTreeSet::from_iter([input_dbc.name()]));
-        assert!(result.is_ok());
-
-        Ok(())
-    }
-
-    /// helper fn to generate DecryptionShares from SecretKeyShare(s) and a Ciphertext
-    fn gen_decryption_shares(
-        cipher: &Ciphertext,
-        secret_key_shares: &BTreeMap<usize, SecretKeyShare>,
-    ) -> BTreeMap<usize, DecryptionShare> {
-        let mut decryption_shares: BTreeMap<usize, DecryptionShare> = Default::default();
-        for (idx, sec_share) in secret_key_shares.iter() {
-            let share = sec_share.decrypt_share_no_verify(cipher);
-            decryption_shares.insert(*idx, share);
-        }
-        decryption_shares
-    }
+*/
 }

@@ -5,7 +5,6 @@
 // under the GPL Licence is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
-use std::collections::BTreeMap;
 use std::io;
 use thiserror::Error;
 
@@ -37,11 +36,13 @@ pub enum Error {
     DbcReissueRequestDoesNotBalance,
     #[error("Failed to unblind an input DBC")]
     FailedUnblinding,
-    #[error("DBC already spent in transaction: {transaction:?}")]
+    #[error("DBC already spent in transaction: {dbc_transaction:?}")]
     DbcAlreadySpent {
-        transaction: crate::DbcTransaction,
-        transaction_sigs:
-            BTreeMap<crate::DbcContentHash, (crate::PublicKeySet, crate::NodeSignature)>,
+        dbc_transaction: crate::DbcTransaction,
+        public_key_set: crate::PublicKeySet,
+        // fixme: this should be full Signature(s) from Spendbook, ie SignedEnvelope
+        signed_envelope_shares: 
+            Vec<blsbs::SignedEnvelopeShare>,
     },
     #[error("Genesis Input has already been spent in a different transaction")]
     GenesisInputAlreadySpent,
@@ -72,20 +73,12 @@ pub enum Error {
     #[error("No reissue transaction")]
     NoReissueTransaction,
 
-    #[error("RangeProof error: {0}")]
-    RangeProof(#[from] bulletproofs::ProofError),
+    #[error("Unknown denomination")]
+    UnknownDenomination,
 
-    #[error("Decryption error: {0}")]
-    DecryptionBySharesFailed(#[from] blsttc::error::Error),
-
-    #[error("Decryption failed")]
-    DecryptionBySecretKeyFailed,
-
-    #[error("Invalid AmountSecret bytes")]
-    AmountSecretsBytesInvalid,
-
-    #[error("Invalid Amount Commitment")]
-    AmountCommitmentInvalid,
+    /// Blind Signature error
+    #[error("blind signature error: {0}")]
+    BlindSignature(#[from] blsbs::Error),
 
     /// I/O error.
     #[error("I/O error: {0}")]
