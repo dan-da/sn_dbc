@@ -5,111 +5,19 @@
 // under the GPL Licence is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
-use crate::{Error, Result};
 use blsbs::Slip;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 use tiny_keccak::{Hasher, Sha3};
 
-use crate::{DbcContentHash, Hash};
-
-#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Denomination {
-    One,
-    Ten,
-    Hundred,
-    Thousand,
-    TenThousand,
-    HundredThousand,
-    Million,
-    TenMillion,
-    HundredMillion,
-    Billion,
-    TenBillion,
-    HundredBillion,
-    Trillion,
-    TenTrillion,
-    HundredTrillion,
-    Quadrillion,
-    TenQuadrillion,
-    HundredQuadrillion,
-    Quintillion,
-    TenQuintillion,
-    Genesis,
-}
-
-impl Denomination {
-    pub fn to_be_bytes(self) -> [u8; 1] {
-        (self as u8).to_be_bytes()
-    }
-
-    pub fn amount(&self) -> Amount {
-        match *self {
-            Self::One => 1u64,
-            Self::Ten => 10u64,
-            Self::Hundred => 100u64,
-            Self::Thousand => 1000u64,
-            Self::TenThousand => 10000u64,
-            Self::HundredThousand => 100000u64,
-            Self::Million => 1000000u64,
-            Self::TenMillion => 10000000u64,
-            Self::HundredMillion => 100000000u64,
-            Self::Billion => 1000000000u64,
-            Self::TenBillion => 10000000000u64,
-            Self::HundredBillion => 100000000000u64,
-            Self::Trillion => 1000000000000u64,
-            Self::TenTrillion => 10000000000000u64,
-            Self::HundredTrillion => 100000000000000u64,
-            Self::Quadrillion => 1000000000000000u64,
-            Self::TenQuadrillion => 10000000000000000u64,
-            Self::HundredQuadrillion => 100000000000000000u64,
-            Self::Quintillion => 1000000000000000000u64,
-            Self::TenQuintillion => 10000000000000000000u64,
-            Self::Genesis => u64::MAX,
-        }
-    }
-}
-
-impl TryFrom<u64> for Denomination {
-    type Error = Error;
-
-    fn try_from(n: u64) -> Result<Self> {
-        match n {
-            1u64 => Ok(Self::One),
-            10u64 => Ok(Self::Ten),
-            100u64 => Ok(Self::Hundred),
-            1000u64 => Ok(Self::Thousand),
-            10000u64 => Ok(Self::TenThousand),
-            100000u64 => Ok(Self::HundredThousand),
-            1000000u64 => Ok(Self::Million),
-            10000000u64 => Ok(Self::TenMillion),
-            100000000u64 => Ok(Self::HundredMillion),
-            1000000000u64 => Ok(Self::Billion),
-            10000000000u64 => Ok(Self::TenBillion),
-            100000000000u64 => Ok(Self::HundredBillion),
-            1000000000000u64 => Ok(Self::Trillion),
-            10000000000000u64 => Ok(Self::TenTrillion),
-            100000000000000u64 => Ok(Self::HundredTrillion),
-            1000000000000000u64 => Ok(Self::Quadrillion),
-            10000000000000000u64 => Ok(Self::TenQuadrillion),
-            100000000000000000u64 => Ok(Self::HundredQuadrillion),
-            1000000000000000000u64 => Ok(Self::Quintillion),
-            10000000000000000000u64 => Ok(Self::TenQuintillion),
-            u64::MAX => Ok(Self::Genesis),
-            _ => Err(Error::UnknownDenomination),
-        }
-    }
-}
-
-pub type Amount = u64;
+use crate::{DbcContentHash, Denomination, Hash};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DbcContent {
     nonce: [u8; 32],
     // this is only a hint, DBC recipient(s) must validate Mint's sig and check
     // Denomination of mint's pubkey.
-    // idea:  amount == derivation index of pubkey.
+    // idea:  denonomination.amount() == derivation index of pubkey.
     denomination: Denomination,
 }
 

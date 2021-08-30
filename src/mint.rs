@@ -223,10 +223,6 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         let content = DbcContent::new_with_nonce(GENESIS_DBC_INPUT.0, Denomination::Genesis); // deterministic/known
         let envelope = slip_preparer.place_slip_in_envelope(&content.slip());
 
-        println!("slip_preparer: {:?}", slip_preparer);
-        println!("content: {:?}", content);
-        println!("envelope: {:?}", envelope);
-
         let transaction = DbcTransaction {
             inputs: BTreeSet::from_iter([GENESIS_DBC_INPUT]),
             outputs: HashSet::from_iter([envelope.clone()]),
@@ -249,8 +245,6 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .key_manager
             .sign_envelope(envelope)
             .map_err(|e| Error::Signing(e.to_string()))?];
-
-        println!("signed_envelope_shares: {:#?}", signed_envelope_shares);
 
         let public_key_set = self
             .key_manager
@@ -370,6 +364,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Serialize;
     // use quickcheck_macros::quickcheck;
 
     use crate::{
@@ -380,6 +375,11 @@ mod tests {
         SimpleSigner,
         TransactionBuilder,
     };
+
+    /// Serialize anything serializable as big endian bytes
+    fn to_be_bytes<T: Serialize>(sk: &T) -> Vec<u8> {
+        bincode::serialize(&sk).unwrap()
+    }
 
     fn genesis() -> Result<(
         Dbc,
@@ -460,7 +460,14 @@ mod tests {
             .add_reissue_share(rs)
             .build()?;
 
+        // Just to give us a rough idea of the DBC size.
+        // note that bincode typically adds some bytes.
+        // todo: add a Dbc::to_bytes() method.
+        let bytes = to_be_bytes(&dbcs[0]);
+        println!("Dbc size: {:?}", bytes.len());
+
         assert_eq!(dbcs.len(), 1);
+        assert_ne!(dbcs[0].name(), genesis_dbc.name());
         assert_eq!(dbcs[0].denomination(), genesis_dbc.denomination());
 
         Ok(())

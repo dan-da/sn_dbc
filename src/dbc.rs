@@ -26,6 +26,14 @@ impl Dbc {
         self.content.denomination()
     }
 
+    // pub fn to_bytes(&self) -> Vec<u8> {
+    //     let mut b: Vec<u8> = Default::default();
+    //     b.extend(self.content.to_bytes());
+    //     b.extend(self.mint_public_key.to_bytes());
+    //     b.extend(self.mint_signature.to_bytes());
+    //     b
+    // }
+
     // Check that signature matches pubkey for content
     pub fn confirm_valid<K: KeyManager>(&self, _verifier: &K) -> Result<(), Error> {
         use blsbs::SignatureExaminer;

@@ -20,8 +20,7 @@ quickcheck_macros = "1"
 rand = "0.7.1"
 curve25519-dalek-ng = "4.0.1"
 hex = "0.4.3"
-#blsbs = {git="https://github.com/dan-da/blsbs"}
-blsbs = {path="/home/danda/dev/maidsafe/blsbs"}
+blsbs = {git="https://github.com/dan-da/blsbs"}
 blsttc = "3.1.0"
 
 

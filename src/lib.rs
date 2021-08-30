@@ -20,6 +20,7 @@ mod builder;
 mod dbc;
 mod dbc_content;
 mod dbc_transaction;
+mod denomination;
 mod error;
 mod key_manager;
 mod mint;
@@ -27,8 +28,9 @@ mod mint;
 pub use crate::{
     builder::{DbcBuilder, Output, TransactionBuilder},
     dbc::Dbc,
-    dbc_content::{Amount, DbcContent, Denomination},
+    dbc_content::DbcContent,
     dbc_transaction::DbcTransaction,
+    denomination::{Amount, Denomination},
     error::{Error, Result},
     key_manager::{KeyManager, PublicKey, PublicKeySet, Signature, SimpleKeyManager, SimpleSigner},
     mint::{
@@ -104,9 +106,8 @@ pub fn bls_dkg_id() -> bls_dkg::outcome::Outcome {
     outcome
 }
 
-/*
-
 #[cfg(test)]
+/*
 fn sha3_256(input: &[u8]) -> [u8; 32] {
     let mut sha3 = Sha3::v256();
     let mut output = [0; 32];
@@ -114,21 +115,21 @@ fn sha3_256(input: &[u8]) -> [u8; 32] {
     sha3.finalize(&mut output);
     output
 }
-
+*/
 #[cfg(test)]
 mod tests {
-    use super::*;
+    //    use super::*;
     use core::num::NonZeroU8;
     use quickcheck::{Arbitrary, Gen};
 
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct TinyInt(u8);
 
-    impl TinyInt {
-        pub fn coerce<T: From<u8>>(self) -> T {
-            self.0.into()
-        }
-    }
+    // impl TinyInt {
+    //     pub fn coerce<T: From<u8>>(self) -> T {
+    //         self.0.into()
+    //     }
+    // }
 
     impl std::fmt::Debug for TinyInt {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -149,11 +150,11 @@ mod tests {
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct NonZeroTinyInt(NonZeroU8);
 
-    impl NonZeroTinyInt {
-        pub fn coerce<T: From<u8>>(self) -> T {
-            self.0.get().into()
-        }
-    }
+    // impl NonZeroTinyInt {
+    //     pub fn coerce<T: From<u8>>(self) -> T {
+    //         self.0.get().into()
+    //     }
+    // }
 
     impl std::fmt::Debug for NonZeroTinyInt {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -182,11 +183,11 @@ mod tests {
     #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
     pub struct TinyVec<T>(Vec<T>);
 
-    impl<T> TinyVec<T> {
-        pub fn into_iter(self) -> impl Iterator<Item = T> {
-            self.0.into_iter()
-        }
-    }
+    // impl<T> TinyVec<T> {
+    //     pub fn into_iter(self) -> impl Iterator<Item = T> {
+    //         self.0.into_iter()
+    //     }
+    // }
 
     impl<T: std::fmt::Debug> std::fmt::Debug for TinyVec<T> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -208,15 +209,15 @@ mod tests {
             Box::new(self.0.shrink().map(Self))
         }
     }
-
-    #[test]
-    fn hash() {
-        let data = b"hello world";
-        let expected = b"\
-    \x64\x4b\xcc\x7e\x56\x43\x73\x04\x09\x99\xaa\xc8\x9e\x76\x22\xf3\
-    \xca\x71\xfb\xa1\xd9\x72\xfd\x94\xa3\x1c\x3b\xfb\xf2\x4e\x39\x38\
-";
-        assert_eq!(sha3_256(data), *expected);
-    }
+    /*
+        #[test]
+        fn hash() {
+            let data = b"hello world";
+            let expected = b"\
+        \x64\x4b\xcc\x7e\x56\x43\x73\x04\x09\x99\xaa\xc8\x9e\x76\x22\xf3\
+        \xca\x71\xfb\xa1\xd9\x72\xfd\x94\xa3\x1c\x3b\xfb\xf2\x4e\x39\x38\
+    ";
+            assert_eq!(sha3_256(data), *expected);
+        }
+    */
 }
-*/
