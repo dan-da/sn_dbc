@@ -20,6 +20,8 @@ mod builder;
 mod dbc;
 mod dbc_content;
 mod dbc_transaction;
+//we skip because denomination.rs is auto-generated and we want to preserve whitespace.
+#[rustfmt::skip]
 mod denomination;
 mod error;
 mod key_manager;
@@ -30,7 +32,7 @@ pub use crate::{
     dbc::Dbc,
     dbc_content::DbcContent,
     dbc_transaction::DbcTransaction,
-    denomination::{Amount, Denomination},
+    denomination::Denomination,
     error::{Error, Result},
     key_manager::{KeyManager, PublicKey, PublicKeySet, Signature, SimpleKeyManager, SimpleSigner},
     mint::{
@@ -38,6 +40,16 @@ pub use crate::{
         GENESIS_DBC_INPUT,
     },
 };
+
+// note: if Amount is changed to a different type,
+//       then you must also run denom-gen to regenerate
+//       denomination.rs.  eg:  (from crate root)
+//       $ cargo run --example denom-gen > /tmp/d.rs && mv /tmp/d.rs src/denomination.rs
+//
+//       If going to a smaller size you should regenerate it first by
+//       defining Amount locally to smaller size in denom-gen, then changing
+//       it here.  Else you will get compile errors.
+pub type Amount = u64;
 
 impl From<[u8; 32]> for Hash {
     fn from(val: [u8; 32]) -> Hash {

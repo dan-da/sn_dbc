@@ -368,6 +368,7 @@ mod tests {
     // use quickcheck_macros::quickcheck;
 
     use crate::{
+        Amount,
         // tests::{TinyInt, TinyVec},
         DbcBuilder,
         Output, //  SimpleKeyManager, SimpleSigner,
@@ -469,6 +470,63 @@ mod tests {
         assert_eq!(dbcs.len(), 1);
         assert_ne!(dbcs[0].name(), genesis_dbc.name());
         assert_eq!(dbcs[0].denomination(), genesis_dbc.denomination());
+
+        Ok(())
+    }
+
+    #[test]
+    fn reissue_genesis_multi_output() -> Result<(), Error> {
+        let (genesis_dbc, mut genesis_node, _genesis_owner) = genesis()?;
+
+        assert!(genesis_dbc
+            .confirm_valid(genesis_node.key_manager())
+            .is_ok());
+
+        let pay_amt = Amount::MAX - 1;
+        let pay_denoms = Denomination::make_change(pay_amt);
+        println!("pay: {:#?}", pay_denoms);
+        let pay_outputs: Vec<Output> = pay_denoms
+            .iter()
+            .map(|d| Output { denomination: *d })
+            .collect();
+        let change_amt = Denomination::Genesis.amount() - pay_amt;
+        let change_denoms = Denomination::make_change(change_amt);
+        let change_outputs: Vec<Output> = change_denoms
+            .iter()
+            .map(|d| Output { denomination: *d })
+            .collect();
+        println!("change: {:#?}", change_denoms);
+
+        let num_outputs = pay_outputs.len() + change_outputs.len();
+
+        let (tx, outputs_content) = TransactionBuilder::default()
+            .add_input(genesis_dbc.clone())
+            .add_outputs(pay_outputs)
+            .add_outputs(change_outputs)
+            .build()?;
+
+        let rr = ReissueRequest {
+            transaction: tx.clone(),
+        };
+
+        let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
+
+        let dbcs = DbcBuilder::new(tx)
+            .add_outputs_content(outputs_content)
+            .add_reissue_share(rs)
+            .build()?;
+
+        // Just to give us a rough idea of the DBC size.
+        // note that bincode typically adds some bytes.
+        // todo: add a Dbc::to_bytes() method.
+        let bytes = to_be_bytes(&dbcs[0]);
+        println!("Dbc size: {:?}", bytes.len());
+
+        let outputs_sum: Amount = dbcs.iter().map(|d| d.denomination().amount()).sum();
+
+        assert_eq!(dbcs.len(), num_outputs);
+        assert_ne!(dbcs[0].name(), genesis_dbc.name());
+        assert_eq!(outputs_sum, Denomination::Genesis.amount());
 
         Ok(())
     }

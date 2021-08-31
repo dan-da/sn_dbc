@@ -70,3 +70,7 @@ required-features = [ "dkg" ]
 #[[example]]
 #name = "mint-repl"
 #path = "examples/mint-repl/mint-repl.rs"
+
+[[example]]
+name = "denom-gen"
+path = "examples/denom-gen/denom-gen.rs"
