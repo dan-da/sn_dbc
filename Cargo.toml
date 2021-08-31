@@ -31,8 +31,8 @@ blsttc = "3.1.0"
   [dependencies.bls_dkg]
   version = "~0.6"
   optional = true
-  path = "/home/danda/dev/maidsafe/bls_dkg"
-
+  git = "https://github.com/maidsafe/bls_dkg"
+  branch = "blsttc_3_1_0_pr"
 
   [dependencies.tiny-keccak]
   version = "2.0.0"
