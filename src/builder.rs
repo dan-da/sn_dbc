@@ -177,8 +177,8 @@ impl DbcBuilder {
                 return Err(Error::ReissueShareDbcTransactionMismatch);
             }
 
-            // Verify that mint sig count matches input count.
-            if rs.signed_envelope_shares.len() != reissue_transaction.inputs.len() {
+            // Verify that mint sig count matches output count.
+            if rs.signed_envelope_shares.len() != reissue_transaction.outputs.len() {
                 return Err(Error::ReissueShareMintNodeSignaturesLenMismatch);
             }
 
