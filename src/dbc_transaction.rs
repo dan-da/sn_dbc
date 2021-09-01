@@ -6,11 +6,32 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{DbcContentHash, Hash};
+use crate::{DbcContentHash, Denomination, Hash};
 // use serde::{Deserialize, Serialize};
 use blsbs::Envelope;
 use std::collections::{BTreeSet, HashSet};
 use tiny_keccak::{Hasher, Sha3};
+
+/// A DbcEnvelope can be thought of as an Envelope
+/// with an amount written on the outside specifying
+/// the desired amount.  This tells the mint
+/// which key to sign with.  The amount for each
+/// DbcEnvelope is constrained by rule:
+///  sum(inputs) must equal sum(outputs)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DbcEnvelope {
+    pub envelope: Envelope,
+    pub denomination: Denomination,
+}
+
+impl DbcEnvelope {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b: Vec<u8> = vec![];
+        b.extend(self.denomination.amount().to_be_bytes());
+        b.extend(self.envelope.to_bytes());
+        b
+    }
+}
 
 /// The spent identifier of the outputs created from this input
 /// Note these are hashes and not identifiers as the Dbc is not addressable on the network.
@@ -18,11 +39,11 @@ use tiny_keccak::{Hasher, Sha3};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbcTransaction {
     pub inputs: BTreeSet<DbcContentHash>,
-    pub outputs: HashSet<Envelope>,
+    pub outputs: HashSet<DbcEnvelope>,
 }
 
 impl DbcTransaction {
-    pub fn new(inputs: BTreeSet<DbcContentHash>, outputs: HashSet<Envelope>) -> Self {
+    pub fn new(inputs: BTreeSet<DbcContentHash>, outputs: HashSet<DbcEnvelope>) -> Self {
         Self { inputs, outputs }
     }
 
@@ -33,7 +54,7 @@ impl DbcTransaction {
         }
 
         for output in self.outputs.iter() {
-            let bytes: [u8; 96] = output.clone().to_bytes();
+            let bytes = output.clone().to_bytes();
             sha3.update(&bytes);
         }
 

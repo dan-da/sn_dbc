@@ -14,11 +14,11 @@
 // Outputs <= input value
 
 use crate::{
-    Dbc, DbcContent, DbcContentHash, DbcTransaction, Denomination, Error, Hash, KeyManager,
-    PublicKeySet, Result,
+    Amount, Dbc, DbcContent, DbcContentHash, DbcEnvelope, DbcTransaction, Denomination, Error,
+    Hash, KeyManager, PublicKeySet, Result,
 };
 // use serde::{Deserialize, Serialize};
-use blsbs::{Envelope, SignedEnvelopeShare, SlipPreparer};
+use blsbs::{SignedEnvelopeShare, SlipPreparer};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     iter::FromIterator,
@@ -92,7 +92,7 @@ impl SimpleSpendBook {
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueTransaction {
     pub inputs: HashSet<Dbc>,
-    pub outputs: HashSet<Envelope>,
+    pub outputs: HashSet<DbcEnvelope>,
 }
 
 impl ReissueTransaction {
@@ -111,50 +111,18 @@ impl ReissueTransaction {
     }
 
     fn validate_balance(&self) -> Result<()> {
-        // fixme: validate that sum(inputs) == sum(outputs)
-        Ok(())
+        let inputs: Amount = self
+            .inputs
+            .iter()
+            .map(|d| d.content.denomination().amount())
+            .sum();
+        let outputs: Amount = self.outputs.iter().map(|d| d.denomination.amount()).sum();
 
-        // // Calculate sum(input_commitments) and sum(output_commitments)
-        // let inputs: RistrettoPoint = self
-        //     .inputs
-        //     .iter()
-        //     .map(|input| {
-        //         input
-        //             .content
-        //             .commitment
-        //             .decompress()
-        //             .ok_or(Error::AmountCommitmentInvalid)
-        //     })
-        //     .sum::<Result<RistrettoPoint, _>>()?;
-        // let outputs: RistrettoPoint = self
-        //     .outputs
-        //     .iter()
-        //     .map(|output| {
-        //         output
-        //             .commitment
-        //             .decompress()
-        //             .ok_or(Error::AmountCommitmentInvalid)
-        //     })
-        //     .sum::<Result<RistrettoPoint, _>>()?;
-
-        // // Verify the range proof for each output.  (bulletproof)
-        // // This validates that the committed amount is a positive value.
-        // // (somewhere in the range 0..u64::max)
-        // //
-        // // TODO: investigate is there some way we could use RangeProof::verify_multiple() instead?
-        // // batched verifications should be faster.  It would seem to require that client call
-        // // RangeProof::prove_multiple() over all output DBC amounts. But then where to store the aggregated
-        // // RangeProof?  It corresponds to a set of outputs, not a single DBC. Would it make sense to store
-        // // a dup copy in each?  Unlike eg Monero we do not have a long-lived Transaction to store such data.
-        // for output in self.outputs.iter() {
-        //     output.verify_range_proof()?;
-        // }
-
-        // if inputs != outputs {
-        //     Err(Error::DbcReissueRequestDoesNotBalance)
-        // } else {
-        //     Ok(())
-        // }
+        if inputs != outputs {
+            Err(Error::DbcReissueRequestDoesNotBalance)
+        } else {
+            Ok(())
+        }
     }
 
     fn validate_input_dbcs<K: KeyManager>(&self, verifier: &K) -> Result<()> {
@@ -222,10 +190,14 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         let slip_preparer = SlipPreparer::from_fr(1); // deterministic/known
         let content = DbcContent::new_with_nonce(GENESIS_DBC_INPUT.0, Denomination::Genesis); // deterministic/known
         let envelope = slip_preparer.place_slip_in_envelope(&content.slip());
+        let dbc_envelope = DbcEnvelope {
+            envelope,
+            denomination: content.denomination(),
+        };
 
         let transaction = DbcTransaction {
             inputs: BTreeSet::from_iter([GENESIS_DBC_INPUT]),
-            outputs: HashSet::from_iter([envelope.clone()]),
+            outputs: HashSet::from_iter([dbc_envelope.clone()]),
         };
 
         match self
@@ -243,7 +215,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
 
         let signed_envelope_shares = vec![self
             .key_manager
-            .sign_envelope(envelope)
+            .sign_envelope(dbc_envelope.envelope)
             .map_err(|e| Error::Signing(e.to_string()))?];
 
         let public_key_set = self
@@ -344,7 +316,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .iter()
             .map(|e| {
                 self.key_manager
-                    .sign_envelope(e.clone())
+                    .sign_envelope(e.envelope.clone())
                     .map_err(|e| Error::Signing(e.to_string()))
             })
             .collect::<Result<_>>()

@@ -31,7 +31,7 @@ pub use crate::{
     builder::{DbcBuilder, Output, TransactionBuilder},
     dbc::Dbc,
     dbc_content::DbcContent,
-    dbc_transaction::DbcTransaction,
+    dbc_transaction::{DbcEnvelope, DbcTransaction},
     denomination::Denomination,
     error::{Error, Result},
     key_manager::{KeyManager, PublicKey, PublicKeySet, Signature, SimpleKeyManager, SimpleSigner},
@@ -49,7 +49,7 @@ pub use crate::{
 //       If going to a smaller size you should regenerate it first by
 //       defining Amount locally to smaller size in denom-gen, then changing
 //       it here.  Else you will get compile errors.
-pub type Amount = u64;
+pub type Amount = u128;
 
 impl From<[u8; 32]> for Hash {
     fn from(val: [u8; 32]) -> Hash {

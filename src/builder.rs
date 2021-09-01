@@ -4,7 +4,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter::FromIterator;
 
 use crate::{
-    Amount, Dbc, DbcContent, Denomination, Error, Hash, ReissueShare, ReissueTransaction, Result,
+    Amount, Dbc, DbcContent, DbcEnvelope, Denomination, Error, Hash, ReissueShare,
+    ReissueTransaction, Result,
 };
 
 ///! Unblinded data for creating sn_dbc::DbcContent
@@ -56,9 +57,9 @@ impl TransactionBuilder {
     }
 
     // Note: The HashMap output is necessary because Envelope, SignedEnvelopeShare do not
-    //       contain the Slip itself, so we must DbcContent around.
+    //       contain the Slip itself, so we must keep DbcContent around.
     //       If they were to contain an encrypted Slip, we would not need this.
-    pub fn build(self) -> Result<(ReissueTransaction, HashMap<Envelope, DbcContent>)> {
+    pub fn build(self) -> Result<(ReissueTransaction, HashMap<DbcEnvelope, DbcContent>)> {
         let outputs_content = self
             .outputs
             .iter()
@@ -69,11 +70,15 @@ impl TransactionBuilder {
             .iter()
             .map(|c| {
                 let envelope = SlipPreparer::new().place_slip_in_envelope(&c.slip());
-                (envelope, c.clone()) // todo: avoid this clone.
+                let dbc_envelope = DbcEnvelope {
+                    envelope,
+                    denomination: c.denomination(),
+                };
+                (dbc_envelope, c.clone()) // todo: avoid this clone.
             })
             .collect::<HashMap<_, _>>();
 
-        let outputs: HashSet<Envelope> = HashSet::from_iter(map.keys().cloned());
+        let outputs: HashSet<DbcEnvelope> = HashSet::from_iter(map.keys().cloned());
 
         let rt = ReissueTransaction {
             inputs: self.inputs,
@@ -94,7 +99,7 @@ pub struct DbcBuilder {
     // Note: this is necessary because Envelope, SignedEnvelopeShare do not
     //       contain the Slip itself, so we must DbcContent around.
     //       If they were to contain an encrypted Slip, we would not need this.
-    pub outputs_content: HashMap<Envelope, DbcContent>,
+    pub outputs_content: HashMap<DbcEnvelope, DbcContent>,
 }
 
 impl DbcBuilder {
@@ -108,15 +113,15 @@ impl DbcBuilder {
     }
 
     /// Add an output DbcContent
-    pub fn add_output_content(mut self, envelope: Envelope, content: DbcContent) -> Self {
-        self.outputs_content.insert(envelope, content);
+    pub fn add_output_content(mut self, dbc_envelope: DbcEnvelope, content: DbcContent) -> Self {
+        self.outputs_content.insert(dbc_envelope, content);
         self
     }
 
     /// Add multiple DbcContent
     pub fn add_outputs_content(
         mut self,
-        contents: impl IntoIterator<Item = (Envelope, DbcContent)>,
+        contents: impl IntoIterator<Item = (DbcEnvelope, DbcContent)>,
     ) -> Self {
         self.outputs_content.extend(contents);
         self
@@ -182,12 +187,12 @@ impl DbcBuilder {
                 return Err(Error::ReissueShareMintNodeSignaturesLenMismatch);
             }
 
-            // Verify that each output Envelope has a corresponding output SignedEnvelopeShare
-            for envelope in reissue_transaction.outputs.iter() {
+            // Verify that each output DbcEnvelope has a corresponding output SignedEnvelopeShare
+            for dbc_envelope in reissue_transaction.outputs.iter() {
                 // todo: do this in a more rusty way.
                 let mut found = false;
                 for ses in rs.signed_envelope_shares.iter() {
-                    if ses.envelope == *envelope {
+                    if ses.envelope == dbc_envelope.envelope {
                         found = true;
                         break;
                     }
@@ -209,10 +214,10 @@ impl DbcBuilder {
 
         // Generate final output Dbcs
         let mut output_dbcs: Vec<Dbc> = Default::default();
-        for (envelope, content) in self.outputs_content {
+        for (dbc_envelope, content) in self.outputs_content {
             // Transform Vec<SignedEnvelopeShare> to Vec<Fr, &SignatureShare>
             let mint_sig_shares_ref: Vec<(Fr, &SignatureShare)> = signed_envelope_shares
-                .get(&envelope)
+                .get(&dbc_envelope.envelope)
                 .unwrap()
                 .iter()
                 .map(|e| e.signature_share_for_envelope_with_index())
