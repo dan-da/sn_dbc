@@ -437,6 +437,7 @@ mod tests {
         // note that bincode typically adds some bytes.
         // todo: add a Dbc::to_bytes() method.
         let bytes = to_be_bytes(&dbcs[0]);
+        println!("Dbc outputs count: {:?}", dbcs.len());
         println!("Dbc size: {:?}", bytes.len());
 
         assert_eq!(dbcs.len(), 1);
@@ -492,6 +493,7 @@ mod tests {
         // note that bincode typically adds some bytes.
         // todo: add a Dbc::to_bytes() method.
         let bytes = to_be_bytes(&dbcs[0]);
+        println!("Dbc outputs count: {:?}", dbcs.len());
         println!("Dbc size: {:?}", bytes.len());
 
         let outputs_sum: Amount = dbcs.iter().map(|d| d.denomination().amount()).sum();

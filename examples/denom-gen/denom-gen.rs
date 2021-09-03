@@ -88,7 +88,7 @@ impl DenominationGenerator {
 
             list.push((name, amt));
 
-            if name_idx == names.len() - 1 || amt > Amount::MAX / 2 {
+            if amt > Amount::MAX / 2 {
                 break;
             }
 
