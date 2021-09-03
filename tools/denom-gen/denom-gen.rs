@@ -22,15 +22,17 @@ use sn_dbc::Amount;
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().collect();
+    let list_mode = args.contains(&"--list".to_string());
+    let last_arg_idx = if list_mode { 2 } else { 1 };
 
-    let algo = if args.len() > 1 {
-        args[1].clone()
+    let algo = if args.len() > last_arg_idx {
+        args[last_arg_idx].clone()
     } else {
         "default".to_string()
     };
     let generator = DenominationGenerator::by_algo_name(&algo);
 
-    if args.contains(&"--list".to_string()) {
+    if list_mode {
         generator.print_list();
     } else {
         generator.print_file();

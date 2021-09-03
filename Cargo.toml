@@ -71,6 +71,6 @@ required-features = [ "dkg" ]
 #name = "mint-repl"
 #path = "examples/mint-repl/mint-repl.rs"
 
-[[example]]
+[[bin]]
 name = "denom-gen"
-path = "examples/denom-gen/denom-gen.rs"
+path = "tools/denom-gen/denom-gen.rs"
