@@ -154,7 +154,7 @@ pub struct ReissueRequest {
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueShare {
     pub dbc_transaction: DbcTransaction,
-    pub signed_envelope_shares: Vec<SignedEnvelopeShare>,
+    pub signed_envelope_shares: Vec<SignedEnvelopeShare>,  // fixme: Vec does not guarantee uniqueness.
     pub public_key_set: PublicKeySet,
     // pub mint_node_signatures: MintNodeSignatures,
 }
@@ -215,7 +215,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
 
         let signed_envelope_shares = vec![self
             .key_manager
-            .sign_envelope(dbc_envelope.envelope)
+            .sign_envelope(dbc_envelope.envelope, dbc_envelope.denomination)
             .map_err(|e| Error::Signing(e.to_string()))?];
 
         let public_key_set = self
@@ -316,7 +316,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .iter()
             .map(|e| {
                 self.key_manager
-                    .sign_envelope(e.envelope.clone())
+                    .sign_envelope(e.envelope.clone(), e.denomination)
                     .map_err(|e| Error::Signing(e.to_string()))
             })
             .collect::<Result<_>>()
@@ -384,9 +384,12 @@ mod tests {
             )])
             .unwrap();
 
+        let denom_idx = gen_dbc_content.denomination().amount().to_be_bytes();
+        let mint_derived_pks = mint_public_key_set.derive_child(&denom_idx);
+
         let genesis_dbc = Dbc {
             content: gen_dbc_content,
-            mint_public_key: mint_public_key_set.public_key(),
+            mint_public_key: mint_derived_pks.public_key(),
             mint_signature,
         };
 

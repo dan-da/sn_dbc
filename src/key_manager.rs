@@ -6,7 +6,7 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{Error, Result};
+use crate::{Denomination, Error, Result};
 use blsbs::{BlindSignerShare, Envelope, SignatureExaminer, SignedEnvelopeShare, Slip};
 use blsttc::SecretKeyShare;
 pub use blsttc::{PublicKey, PublicKeySet, Signature};
@@ -31,8 +31,12 @@ use std::collections::HashSet;
 
 pub trait KeyManager {
     type Error: std::error::Error;
-    fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare, Self::Error>;
+
+    // fn sign_envelope<T: IntoFr>(&self, envelope: Envelope, derivation_index: T) -> Result<SignedEnvelopeShare, Self::Error>;
+    fn sign_envelope(&self, envelope: Envelope, denomination: Denomination) -> Result<SignedEnvelopeShare, Self::Error>;
+
     fn public_key_set(&self) -> Result<PublicKeySet, Self::Error>;
+
     #[allow(clippy::ptr_arg)]
     fn verify_slip(
         &self,
@@ -40,12 +44,14 @@ pub trait KeyManager {
         key: &PublicKey,
         signature: &Signature,
     ) -> Result<(), Self::Error>;
+
     fn verify_envelope(
         &self,
         envelope: &Envelope,
         key: &PublicKey,
         signature: &Signature,
     ) -> Result<(), Self::Error>;
+
     fn verify_known_key(&self, key: &PublicKey) -> Result<(), Self::Error>;
 }
 
@@ -83,12 +89,20 @@ impl SimpleSigner {
         self.blind_signer_share.public_key_set()
     }
 
-    fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare> {
+    fn sign_envelope(&self, envelope: Envelope, denomination: Denomination) -> Result<SignedEnvelopeShare> {
         #[allow(clippy::redundant_closure)]
         self.blind_signer_share
+            .derive_child(&denomination.amount().to_be_bytes())
             .sign_envelope(envelope)
             .map_err(|e| Error::from(e))
     }
+
+    // fn sign_envelope<T: IntoFr>(&self, envelope: Envelope, derivation_index: T) -> Result<SignedEnvelopeShare> {
+    //     #[allow(clippy::redundant_closure)]
+    //     self.blind_signer_share
+    //         .sign_envelope(envelope)
+    //         .map_err(|e| Error::from(e))
+    // }
 
     // fn sign<M: AsRef<[u8]>>(&self, msg: M) -> blsttc::SignatureShare {
     //     self.blind_signer_share.sign(msg)
@@ -124,8 +138,8 @@ impl KeyManager for SimpleKeyManager {
         Ok(self.signer.public_key_set().clone())
     }
 
-    fn sign_envelope(&self, envelope: Envelope) -> Result<SignedEnvelopeShare> {
-        self.signer.sign_envelope(envelope)
+    fn sign_envelope(&self, envelope: Envelope, denomination: Denomination) -> Result<SignedEnvelopeShare> {
+        self.signer.sign_envelope(envelope, denomination)
     }
 
     #[allow(clippy::ptr_arg)]
@@ -190,3 +204,9 @@ impl Keys {
         }
     }
 }
+
+// fn into_fr<I: IntoFr>(x: I) -> Fr {
+//     let mut result = Fr::zero();
+//     result.add_assign(&x.into_fr());
+//     result
+// }

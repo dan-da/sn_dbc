@@ -223,13 +223,17 @@ impl DbcBuilder {
                 .map(|e| e.signature_share_for_envelope_with_index())
                 .collect();
 
+            let denom_idx = dbc_envelope.denomination.amount().to_be_bytes();
+
+            let mint_derived_pks = mint_public_key_set.derive_child(&denom_idx);
+
             // Combine signatures from all the mint nodes to obtain Mint's Signature.
-            let mint_sig = mint_public_key_set.combine_signatures(mint_sig_shares_ref)?;
+            let mint_sig = mint_derived_pks.combine_signatures(mint_sig_shares_ref)?;
 
             // Form the final output DBCs, with Mint's Signature for each.
             let dbc = Dbc {
                 content,
-                mint_public_key: mint_public_key_set.public_key(),
+                mint_public_key: mint_derived_pks.public_key(),
                 mint_signature: mint_sig,
             };
             output_dbcs.push(dbc);
