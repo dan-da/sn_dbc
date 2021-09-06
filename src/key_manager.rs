@@ -33,7 +33,11 @@ pub trait KeyManager {
     type Error: std::error::Error;
 
     // fn sign_envelope<T: IntoFr>(&self, envelope: Envelope, derivation_index: T) -> Result<SignedEnvelopeShare, Self::Error>;
-    fn sign_envelope(&self, envelope: Envelope, denomination: Denomination) -> Result<SignedEnvelopeShare, Self::Error>;
+    fn sign_envelope(
+        &self,
+        envelope: Envelope,
+        denomination: Denomination,
+    ) -> Result<SignedEnvelopeShare, Self::Error>;
 
     fn public_key_set(&self) -> Result<PublicKeySet, Self::Error>;
 
@@ -89,7 +93,11 @@ impl SimpleSigner {
         self.blind_signer_share.public_key_set()
     }
 
-    fn sign_envelope(&self, envelope: Envelope, denomination: Denomination) -> Result<SignedEnvelopeShare> {
+    fn sign_envelope(
+        &self,
+        envelope: Envelope,
+        denomination: Denomination,
+    ) -> Result<SignedEnvelopeShare> {
         #[allow(clippy::redundant_closure)]
         self.blind_signer_share
             .derive_child(&denomination.amount().to_be_bytes())
@@ -138,7 +146,11 @@ impl KeyManager for SimpleKeyManager {
         Ok(self.signer.public_key_set().clone())
     }
 
-    fn sign_envelope(&self, envelope: Envelope, denomination: Denomination) -> Result<SignedEnvelopeShare> {
+    fn sign_envelope(
+        &self,
+        envelope: Envelope,
+        denomination: Denomination,
+    ) -> Result<SignedEnvelopeShare> {
         self.signer.sign_envelope(envelope, denomination)
     }
 

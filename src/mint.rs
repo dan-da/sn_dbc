@@ -154,7 +154,7 @@ pub struct ReissueRequest {
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueShare {
     pub dbc_transaction: DbcTransaction,
-    pub signed_envelope_shares: Vec<SignedEnvelopeShare>,  // fixme: Vec does not guarantee uniqueness.
+    pub signed_envelope_shares: Vec<SignedEnvelopeShare>, // fixme: Vec does not guarantee uniqueness.
     pub public_key_set: PublicKeySet,
     // pub mint_node_signatures: MintNodeSignatures,
 }
