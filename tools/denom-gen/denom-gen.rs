@@ -55,6 +55,7 @@ impl DenominationGenerator {
         }
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn powers_of_ten_1_to_9() -> Self {
         let mut list: Vec<(String, Amount)> = Default::default();
 
@@ -104,6 +105,7 @@ impl DenominationGenerator {
         Self { list }
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn powers_of_ten() -> Self {
         let mut list: Vec<(String, Amount)> = Default::default();
 
@@ -143,6 +145,7 @@ impl DenominationGenerator {
         Self { list }
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn powers_of_two() -> Self {
         let mut list: Vec<(String, Amount)> = Default::default();
 
@@ -171,7 +174,7 @@ impl DenominationGenerator {
         if let Some(r) = s2.get_mut(0..1) {
             r.make_ascii_uppercase();
         }
-        s2.to_string()
+        s2
     }
 
     fn print_file(&self) {
@@ -330,7 +333,7 @@ mod tests {{
         for (name, _) in self.list.iter() {
             s.push_str(&format!("    {},\n", name));
         }
-        s.push_str(&format!("    Genesis,\n"));
+        s.push_str(&"    Genesis,\n".to_string());
         s
     }
 
