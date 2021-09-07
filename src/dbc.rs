@@ -26,6 +26,10 @@ impl Dbc {
         self.content.denomination()
     }
 
+    pub fn owner(&self) -> &PublicKey {
+        self.content.owner()
+    }
+
     // pub fn to_bytes(&self) -> Vec<u8> {
     //     let mut b: Vec<u8> = Default::default();
     //     b.extend(self.content.to_bytes());

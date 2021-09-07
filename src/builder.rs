@@ -11,7 +11,7 @@ use crate::{
 ///! Unblinded data for creating sn_dbc::DbcContent
 pub struct Output {
     pub denomination: Denomination,
-    // pub owner: blsttc::PublicKey,
+    pub owner: blsttc::PublicKey,
 }
 
 #[derive(Default)]
@@ -63,7 +63,7 @@ impl TransactionBuilder {
         let outputs_content = self
             .outputs
             .iter()
-            .map(|o| DbcContent::new(o.denomination))
+            .map(|o| DbcContent::new(o.owner, o.denomination))
             .collect::<HashSet<_>>();
 
         let map = outputs_content
