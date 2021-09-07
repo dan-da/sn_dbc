@@ -6,8 +6,8 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{DbcContentHash, Denomination, Hash};
-// use serde::{Deserialize, Serialize};
+use crate::{DbcContentHash, Denomination, Hash, Result};
+// use serde::{Deserialize, Serialize, Serializer};
 use blsbs::Envelope;
 use std::collections::{BTreeSet, HashSet};
 use tiny_keccak::{Hasher, Sha3};
@@ -27,11 +27,23 @@ pub struct DbcEnvelope {
 impl DbcEnvelope {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut b: Vec<u8> = vec![];
-        b.extend(self.denomination.amount().to_be_bytes());
+        b.extend(self.denomination.to_be_bytes());
         b.extend(self.envelope.to_bytes());
         b
     }
+
+    pub fn from_bytes(bytes: [u8; 98]) -> Result<Self> {
+        let mut d: [u8; 2] = [0; 2];
+        d.copy_from_slice(&bytes);
+        let denomination = Denomination::from_be_bytes(d)?;
+
+        let mut e: [u8; 96] = [0; 96];
+        e.copy_from_slice(&bytes[2..96+2]);
+        let envelope = Envelope::from(e);
+        Ok(Self{ envelope, denomination})
+    }
 }
+
 
 /// The spent identifier of the outputs created from this input
 /// Note these are hashes and not identifiers as the Dbc is not addressable on the network.

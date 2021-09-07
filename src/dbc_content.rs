@@ -10,7 +10,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tiny_keccak::{Hasher, Sha3};
 
-use crate::{DbcContentHash, Denomination, Hash};
+use crate::{DbcContentHash, Denomination, Hash, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DbcContent {
@@ -36,8 +36,25 @@ impl DbcContent {
         }
     }
 
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b: Vec<u8> = vec![];
+        b.extend(self.nonce);
+        b.extend(self.denomination.to_be_bytes());
+        b
+    }
+
+    pub fn from_bytes(bytes: [u8; 34]) -> Result<Self> {
+        let mut nonce: [u8; 32] = Default::default();
+        nonce.copy_from_slice(&bytes);
+        let mut d: [u8; 2] = Default::default();
+        d.copy_from_slice(&bytes[32..]);
+        let denomination = Denomination::from_be_bytes(d)?;
+        Ok(Self::new_with_nonce(nonce, denomination))
+    }
+
     pub fn slip(&self) -> Slip {
         let mut slip: Slip = Default::default();
+//        slip.extend(self.denomination.to_be_bytes());
         slip.extend(self.denomination.to_be_bytes());
         slip
     }

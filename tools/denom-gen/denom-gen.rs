@@ -14,7 +14,7 @@
 /// with different sizes, esp u64 and u128.
 ///
 /// Usage:  (from crate root dir)
-///     $ cargo run --example denom-gen > /tmp/d.rs && mv /tmp/d.rs src/denomination.rs
+///     $ cargo run --bin denom-gen > /tmp/d.rs && mv /tmp/d.rs src/denomination.rs
 use sn_dbc::Amount;
 
 // uncomment to use this instead.
@@ -202,6 +202,7 @@ use std::convert::TryFrom;
         println!(
             r#"
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u16)]
 pub enum Denomination {{
 {}
 }}
@@ -215,8 +216,16 @@ pub enum Denomination {{
             r#"
 impl Denomination {{
 
-    pub fn to_be_bytes(self) -> [u8; 1] {{
-        (self as u8).to_be_bytes()
+    pub fn to_be_bytes(self) -> [u8; 2] {{
+        (self as u16).to_be_bytes()
+    }}
+
+    pub fn from_be_bytes(bytes: [u8; 2]) -> Result<Self> {{
+        let variant = u16::from_be_bytes(bytes);
+        if variant >= {} {{
+            return Err(Error::UnknownDenomination);
+        }}
+        Ok(unsafe {{ std::mem::transmute(variant) }})
     }}
 
     pub fn amount(&self) -> Amount {{
@@ -274,10 +283,16 @@ type Error = Error;
     }}
 }}
 "#,
+
+            self.num_variants(),
             self.gen_name_to_amount_matches(),
             self.gen_all_variants(),
             self.gen_try_from_matches()
         );
+    }
+
+    fn num_variants(&self) -> usize {
+        self.list.len() + 1  // + 1 for Genesis variant.
     }
 
     fn print_tests(&self) {

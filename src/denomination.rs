@@ -9,6 +9,7 @@ use std::convert::TryFrom;
 
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u16)]
 pub enum Denomination {
     OneOne,
     TwoOne,
@@ -361,8 +362,16 @@ pub enum Denomination {
 
 impl Denomination {
 
-    pub fn to_be_bytes(self) -> [u8; 1] {
-        (self as u8).to_be_bytes()
+    pub fn to_be_bytes(self) -> [u8; 2] {
+        (self as u16).to_be_bytes()
+    }
+
+    pub fn from_be_bytes(bytes: [u8; 2]) -> Result<Self> {
+        let variant = u16::from_be_bytes(bytes);
+        if variant >= 345 {
+            return Err(Error::UnknownDenomination);
+        }
+        Ok(unsafe { std::mem::transmute(variant) })
     }
 
     pub fn amount(&self) -> Amount {

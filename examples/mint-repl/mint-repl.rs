@@ -20,7 +20,7 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use serde::{Deserialize, Serialize};
 use sn_dbc::{
-    Amount, Dbc, DbcBuilder, DbcContent, DbcTransaction, Hash, Mint, NodeSignature, Output,
+    Amount, Dbc, DbcBuilder, DbcContent, DbcTransaction, Hash, MintNode, Output,
     ReissueRequest, ReissueTransaction, SimpleKeyManager as KeyManager, SimpleSigner as Signer,
     SimpleSpendBook as SpendBook, TransactionBuilder,
 };
@@ -36,7 +36,7 @@ use termios::{tcsetattr, Termios, ICANON, TCSADRAIN};
 /// Holds information about the Mint, which may be comprised
 /// of 1 or more nodes.
 struct MintInfo {
-    mintnodes: Vec<Mint<KeyManager, SpendBook>>,
+    mintnodes: Vec<MintNode<KeyManager, SpendBook>>,
     genesis: DbcUnblinded,
     secret_key_set: SecretKeySet,
     poly: Poly,
@@ -44,7 +44,7 @@ struct MintInfo {
 
 impl MintInfo {
     // returns the first mint node.
-    fn mintnode(&self) -> Result<&Mint<KeyManager, SpendBook>> {
+    fn mintnode(&self) -> Result<&MintNode<KeyManager, SpendBook>> {
         self.mintnodes
             .get(0)
             .ok_or_else(|| anyhow!("Mint not yet created"))
@@ -115,10 +115,10 @@ fn main() -> Result<()> {
                         Ok(())
                     }
                     "mintinfo" => print_mintinfo_human(&mintinfo),
-                    "prepare_tx" => prepare_tx(),
-                    "sign_tx" => sign_tx(),
-                    "prepare_reissue" => prepare_reissue(),
-                    "reissue" => reissue(&mut mintinfo),
+                    // "prepare_tx" => prepare_tx(),
+                    // "sign_tx" => sign_tx(),
+                    // "prepare_reissue" => prepare_reissue(),
+                    // "reissue" => reissue(&mut mintinfo),
                     "reissue_ez" => reissue_ez(&mut mintinfo),
                     "validate" => validate(&mintinfo),
                     "newkey" => newkey(),
@@ -211,7 +211,7 @@ fn mk_new_random_mint(threshold: usize, amount: Amount) -> Result<MintInfo> {
 /// creates a new mint from an existing SecretKeySet that was seeded by poly.
 fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, amount: Amount) -> Result<MintInfo> {
     let genesis_pubkey = secret_key_set.public_keys().public_key();
-    let mut mints: Vec<Mint<KeyManager, SpendBook>> = Default::default();
+    let mut mints: Vec<MintNode<KeyManager, SpendBook>> = Default::default();
 
     // Generate each Mint node, and corresponding NodeSignature. (Index + SignatureShare)
     let mut genesis_set: Vec<(DbcContent, DbcTransaction, (PublicKeySet, NodeSignature))> =
@@ -224,7 +224,7 @@ fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, amount: Amount) -> Resu
             ),
             genesis_pubkey,
         );
-        let mut mint = Mint::new(key_manager, SpendBook::new());
+        let mut mint = MintNode::new(key_manager, SpendBook::new());
         genesis_set.push(mint.issue_genesis_dbc(amount)?);
         mints.push(mint);
     }
@@ -709,7 +709,7 @@ fn prepare_tx() -> Result<()> {
 
     Ok(())
 }
-
+/*
 /// Implements sign_tx command.
 fn sign_tx() -> Result<()> {
     let tx_input = readline_prompt_nl("\nReissueTransaction: ")?;
@@ -879,7 +879,7 @@ fn reissue(mintinfo: &mut MintInfo) -> Result<()> {
         &reissue_request.outputs_owners,
     )
 }
-
+*/
 /// Implements reissue_ez command.
 fn reissue_ez(mintinfo: &mut MintInfo) -> Result<()> {
     let mut tx_builder: TransactionBuilder = Default::default();
@@ -1023,7 +1023,7 @@ fn reissue_exec(
     let mut dbc_builder: DbcBuilder = Default::default();
     dbc_builder = dbc_builder.set_reissue_transaction(reissue_request.transaction.clone());
 
-    // Mint is multi-node.  So each mint node must execute Mint::reissue() and
+    // Mint is multi-node.  So each mint node must execute MintNode::reissue() and
     // provide its SignatureShare, which the client must then combine together
     // to form the mint's Signature.  This loop would exec on the client.
     for mint in mintinfo.mintnodes.iter_mut() {
