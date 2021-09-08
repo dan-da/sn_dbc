@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.0.0](https://github.com/dan-da/sn_dbc/compare/v1.1.0...v2.0.0) (2021-09-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* updates to use blsstc
+
+### Features
+
+* add APIs that enable recipient to verify AmountSecrets match committed amount ([54776ee](https://github.com/dan-da/sn_dbc/commit/54776eef6edf5973f5a543700a76292ecb0475d5))
+* add DbcBuilder ([66fda04](https://github.com/dan-da/sn_dbc/commit/66fda04e4589c4d97b105a1bb6d6ae25232f120b))
+* add errors NoReissueShares and NoReissueTransaction ([f6aa707](https://github.com/dan-da/sn_dbc/commit/f6aa7070ccdea830ebd536c52c34b2697ff7fc56))
+* add ReissueRequestBuilder to simplify aggregating dbc ownership proofs ([fa12b56](https://github.com/dan-da/sn_dbc/commit/fa12b56bb4e3cf34b8db64bd451d3c5cc4f2a93c))
+* **builder:** add fns for getting input/output sum and input hashes ([5eeae06](https://github.com/dan-da/sn_dbc/commit/5eeae0623285242a7d91c68914f5649c559b499c))
+* **tx_builder:** introduce transaction builder pattern ([d0539a7](https://github.com/dan-da/sn_dbc/commit/d0539a7a929a1cfc7027553c6d99da508faefa9f))
+* add SpendBook::entries() to enforce type of Iterator values ([5a6d20e](https://github.com/dan-da/sn_dbc/commit/5a6d20ec1a9d15fe363aab24a77d11e5db72c9c8))
+* confidential transactions.  pedersen commitments + bulletproofs (range proofs) ([ee2623e](https://github.com/dan-da/sn_dbc/commit/ee2623e9d30551bf731be0a3ead3969e39626376))
+* make SpendBook a trait so that implementer can decide how to store it ([287a341](https://github.com/dan-da/sn_dbc/commit/287a34131da204a20d0a03a08bca0ac4e1acd0d9))
+* redefine Hash as a struct so we can impl Display on it, and print as base64 ([b540203](https://github.com/dan-da/sn_dbc/commit/b540203c5d988943662d91050d00939afd725cd4))
+* remove IntoIterator requirement on SpendBook trait ([c0ac6c2](https://github.com/dan-da/sn_dbc/commit/c0ac6c2b215fc853d4d979bb68fd13d8862c92ea))
+* return Result for SpendBook trait methods.  adds Error::SpendBook enum ([5bddb4c](https://github.com/dan-da/sn_dbc/commit/5bddb4c346a140e2eb44f59641bc46dedcce94e5))
+* use blsstc instead of threshold_crypto ([4044c27](https://github.com/dan-da/sn_dbc/commit/4044c27aca4fdf03ec7e13a01e7cde4b9605e107))
+* **bench:** benchmark split and merge reissus ([852ac41](https://github.com/dan-da/sn_dbc/commit/852ac41ddb46726268f81ff1c58bda5a52e6b9e3))
+* **mint:** replace ed25519 mint identities with BLS ([78baf59](https://github.com/dan-da/sn_dbc/commit/78baf59d7f7e09c31ca083f459420ac15c847be5))
+* **mint:** take input hashes belonging to mint, in reissue method ([37b826b](https://github.com/dan-da/sn_dbc/commit/37b826bf3a15d1a3215eb333544330edd7c7b83b))
+* **owners:** blind owners in dbccontent ([f63454b](https://github.com/dan-da/sn_dbc/commit/f63454bed3f3addfeecb9399422c17cd909c1e7f))
+
+
+### Bug Fixes
+
+* **bench:** fixes [#79](https://github.com/dan-da/sn_dbc/issues/79) - bug in code to generate ownership proofs ([082e4bb](https://github.com/dan-da/sn_dbc/commit/082e4bb9f3fd56a68408dd0c6c445540d2203659))
+* **dkg:** use Outcome::index instead of hardcoding 0 ([0650b37](https://github.com/dan-da/sn_dbc/commit/0650b378abed9e9c946c46db2013bc64aa6013e2))
+* address CR comments - fix naming and spelling ([e796cfe](https://github.com/dan-da/sn_dbc/commit/e796cfe7c96a87a27c7f50f1e24244a9145919c9))
+* make dbc_content::AmountSecrets impl Copy ([5b5ef05](https://github.com/dan-da/sn_dbc/commit/5b5ef059f5272f6e9df1ff3786487954c71b2fb5))
+* **bench:** update benchmarks to work with the new BLS keys ([e3da1fb](https://github.com/dan-da/sn_dbc/commit/e3da1fb37dabc4b548ca819425065fd70f763f7a))
+* **bls:** remove ed25519 dependency ([d46422a](https://github.com/dan-da/sn_dbc/commit/d46422a5a6c9672ca805d7108e600ed32bfdf8ec))
+* **mint:** replace mint keys with key sets; fixed size BLS indices ([3bd7e29](https://github.com/dan-da/sn_dbc/commit/3bd7e29f7579414c884f8d092e0ef58debff514f))
+* **tests:** also match on the mapped errors ([df5c98c](https://github.com/dan-da/sn_dbc/commit/df5c98c1b5ee3106c26b73642cefb50b0cd61d38))
+
 ## [2.5.0](https://github.com/maidsafe/sn_dbc/compare/v2.4.2...v2.5.0) (2021-09-07)
 
 
