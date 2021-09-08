@@ -54,7 +54,7 @@ impl DbcContent {
 
     pub fn slip(&self) -> Slip {
         let mut slip: Slip = Default::default();
-//        slip.extend(self.denomination.to_be_bytes());
+        //        slip.extend(self.denomination.to_be_bytes());
         slip.extend(self.denomination.to_be_bytes());
         slip
     }

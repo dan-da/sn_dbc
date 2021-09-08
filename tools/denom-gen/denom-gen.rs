@@ -283,7 +283,6 @@ type Error = Error;
     }}
 }}
 "#,
-
             self.num_variants(),
             self.gen_name_to_amount_matches(),
             self.gen_all_variants(),
@@ -292,7 +291,7 @@ type Error = Error;
     }
 
     fn num_variants(&self) -> usize {
-        self.list.len() + 1  // + 1 for Genesis variant.
+        self.list.len() + 1 // + 1 for Genesis variant.
     }
 
     fn print_tests(&self) {

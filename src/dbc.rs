@@ -36,21 +36,21 @@ impl Dbc {
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let mut c: [u8; 34] = [0; 34];
-        c.copy_from_slice(&bytes);
+        c.copy_from_slice(bytes);
         let content = DbcContent::from_bytes(c)?;
 
         let mut pk: [u8; 48] = [0; 48];
-        pk.copy_from_slice(&bytes[34..34+48]);
+        pk.copy_from_slice(&bytes[34..34 + 48]);
         let mint_public_key = PublicKey::from_bytes(pk)?;
 
         let mut s: [u8; 96] = [0; 96];
-        s.copy_from_slice(&bytes[34+48..34+48+96]);
+        s.copy_from_slice(&bytes[34 + 48..34 + 48 + 96]);
         let mint_signature = Signature::from_bytes(s)?;
 
-        Ok(Self{
+        Ok(Self {
             content,
             mint_public_key,
-            mint_signature
+            mint_signature,
         })
     }
 

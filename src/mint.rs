@@ -17,8 +17,8 @@ use crate::{
     Amount, Dbc, DbcContent, DbcContentHash, DbcEnvelope, DbcTransaction, Denomination, Error,
     Hash, KeyManager, PublicKeySet, Result,
 };
-// use serde::{Deserialize, Serialize};
 use blsbs::{SignedEnvelopeShare, SlipPreparer};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     iter::FromIterator,
@@ -39,8 +39,7 @@ pub trait SpendBook: std::fmt::Debug + Clone {
     ) -> Result<(), Self::Error>;
 }
 
-// #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SimpleSpendBook {
     pub transactions: BTreeMap<DbcContentHash, DbcTransaction>,
 }
@@ -88,8 +87,7 @@ impl SimpleSpendBook {
     }
 }
 
-// #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
-#[derive(Eq, PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
 pub struct ReissueTransaction {
     pub inputs: HashSet<Dbc>,
     pub outputs: HashSet<DbcEnvelope>,
@@ -144,8 +142,7 @@ impl ReissueTransaction {
     }
 }
 
-// #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
-#[derive(Eq, PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
 pub struct ReissueRequest {
     pub transaction: ReissueTransaction,
 }
@@ -159,8 +156,7 @@ pub struct ReissueShare {
     // pub mint_node_signatures: MintNodeSignatures,
 }
 
-// #[derive(Debug, Clone, Deserialize, Serialize)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MintNode<K, S>
 where
     K: KeyManager,

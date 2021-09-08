@@ -84,7 +84,7 @@ pub enum Error {
     Bls(#[from] blsttc::error::Error),
 
     #[error("deserialization from bytes failed")]
-    BlsttcFromBytes(#[from] blsttc::error::FromBytesError),  
+    BlsttcFromBytes(#[from] blsttc::error::FromBytesError),
 
     /// I/O error.
     #[error("I/O error: {0}")]

@@ -7,8 +7,8 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{DbcContentHash, Denomination, Hash, Result};
-// use serde::{Deserialize, Serialize, Serializer};
 use blsbs::Envelope;
+use serde::{Deserialize, Serialize, Serializer};
 use std::collections::{BTreeSet, HashSet};
 use tiny_keccak::{Hasher, Sha3};
 
@@ -18,8 +18,12 @@ use tiny_keccak::{Hasher, Sha3};
 /// which key to sign with.  The amount for each
 /// DbcEnvelope is constrained by rule:
 ///  sum(inputs) must equal sum(outputs)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DbcEnvelope {
+    #[serde(
+        serialize_with = "envelope_serialize",
+        deserialize_with = "envelope_deserialize"
+    )]
     pub envelope: Envelope,
     pub denomination: Denomination,
 }
@@ -38,17 +42,37 @@ impl DbcEnvelope {
         let denomination = Denomination::from_be_bytes(d)?;
 
         let mut e: [u8; 96] = [0; 96];
-        e.copy_from_slice(&bytes[2..96+2]);
+        e.copy_from_slice(&bytes[2..96 + 2]);
         let envelope = Envelope::from(e);
-        Ok(Self{ envelope, denomination})
+        Ok(Self {
+            envelope,
+            denomination,
+        })
     }
 }
 
+fn envelope_serialize<S>(e: &Envelope, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_bytes(&e.to_bytes())
+}
+
+fn envelope_deserialize<'de, D>(deserializer: D) -> Result<Envelope, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    let vbytes = Vec::<u8>::deserialize(deserializer)?;
+    let mut bytes: [u8; 96] = [0; 96];
+    bytes.copy_from_slice(&vbytes[0..]);
+
+    Ok(Envelope::from(bytes))
+}
 
 /// The spent identifier of the outputs created from this input
 /// Note these are hashes and not identifiers as the Dbc is not addressable on the network.
 /// i.e. a Dbc can be stored anywhere, even offline.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DbcTransaction {
     pub inputs: BTreeSet<DbcContentHash>,
     pub outputs: HashSet<DbcEnvelope>,
