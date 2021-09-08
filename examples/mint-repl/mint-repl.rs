@@ -13,7 +13,7 @@ use anyhow::{anyhow, Error, Result};
 use blsttc::poly::Poly;
 use blsttc::serde_impl::SerdeSecret;
 use blsttc::{
-    PublicKey, PublicKeySet, SecretKey, SecretKeySet, SecretKeyShare, Signature, SignatureShare,
+    Fr, PublicKey, PublicKeySet, SecretKey, SecretKeySet, SecretKeyShare, Signature, SignatureShare,
 };
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
@@ -26,6 +26,7 @@ use sn_dbc::{
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
+use blsbs::{SlipPreparer, SignedEnvelopeShare};
 
 #[cfg(unix)]
 use std::os::unix::{io::AsRawFd, prelude::RawFd};
@@ -209,12 +210,12 @@ fn mk_new_random_mint(threshold: usize, amount: Amount) -> Result<MintInfo> {
 }
 
 /// creates a new mint from an existing SecretKeySet that was seeded by poly.
-fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, amount: Amount) -> Result<MintInfo> {
+fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, _amount: Amount) -> Result<MintInfo> {
     let genesis_pubkey = secret_key_set.public_keys().public_key();
     let mut mints: Vec<MintNode<KeyManager, SpendBook>> = Default::default();
 
     // Generate each Mint node, and corresponding NodeSignature. (Index + SignatureShare)
-    let mut genesis_set: Vec<(DbcContent, DbcTransaction, (PublicKeySet, NodeSignature))> =
+    let mut genesis_set: Vec<(DbcContent, DbcTransaction, SlipPreparer, PublicKeySet, Vec<SignedEnvelopeShare>)> =
         Default::default();
     for i in 0..secret_key_set.threshold() as u64 + 1 {
         let key_manager = KeyManager::new(
@@ -225,19 +226,25 @@ fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, amount: Amount) -> Resu
             genesis_pubkey,
         );
         let mut mint = MintNode::new(key_manager, SpendBook::new());
-        genesis_set.push(mint.issue_genesis_dbc(amount)?);
+        genesis_set.push(mint.issue_genesis_dbc()?);
         mints.push(mint);
     }
 
+
     // Make a list of (Index, SignatureShare) for combining sigs.
-    let node_sigs: Vec<(u64, &SignatureShare)> = genesis_set
-        .iter()
-        .map(|e| e.2 .1.threshold_crypto())
-        .collect();
+    let mut node_sigs: Vec<(Fr, &SignatureShare)> = Default::default();
+    for set in genesis_set.iter() {
+        let ses = &set.4[0];
+        let slip_preparer = &set.2;
+        node_sigs.push((
+            ses.signature_share_index(), 
+            &ses.signature_share_for_slip(slip_preparer.blinding_factor())?
+        ));
+    }
 
     // Todo: in a true multi-node mint, each node would call issue_genesis_dbc(), then the aggregated
     // signatures would be combined here, so this mk_new_mint fn would to be broken apart.
-    let genesis_sig = secret_key_set
+    let mint_signature = secret_key_set
         .public_keys()
         .combine_signatures(node_sigs)
         .map_err(|e| anyhow!(e))?;
@@ -245,11 +252,8 @@ fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, amount: Amount) -> Resu
     // Create the Genesis Dbc
     let genesis_dbc = Dbc {
         content: genesis_set[0].0.clone(),
-        transaction: genesis_set[0].1.clone(),
-        transaction_sigs: BTreeMap::from_iter([(
-            sn_dbc::GENESIS_DBC_INPUT,
-            (genesis_pubkey, genesis_sig),
-        )]),
+        mint_public_key: secret_key_set.public_keys().public_key(),
+        mint_signature,
     };
 
     // Bob's your uncle.
@@ -383,7 +387,6 @@ fn print_mintinfo_human(mintinfo: &MintInfo) -> Result<()> {
     print_dbc_human(
         &mintinfo.genesis,
         true,
-        Some((&mintinfo.secret_key_set.public_keys(), &secret_key_shares)),
     )?;
 
     println!("\n");
@@ -410,46 +413,12 @@ fn secret_key_set_to_shares(sks: &SecretKeySet) -> (PublicKeySet, BTreeMap<usize
 fn print_dbc_human(
     dbc: &DbcUnblinded,
     outputs: bool,
-    keys: Option<(&PublicKeySet, &BTreeMap<usize, SecretKeyShare>)>,
 ) -> Result<()> {
     println!("id: {}\n", encode(dbc.inner.name()));
 
-    match keys {
-        Some((public_key_set, secret_key_shares)) => {
-            let amount_secrets = dbc
-                .inner
-                .content
-                .amount_secrets_by_secret_key_shares(public_key_set, secret_key_shares)?;
-            println!("*** Secrets (decrypted) ***");
-            println!("     amount: {}\n", amount_secrets.amount);
-            println!(
-                "     blinding_factor: {}\n",
-                to_be_hex(&amount_secrets.blinding_factor)?
-            );
-        }
-        None => println!("amount: unknown.  SecretKey not available\n"),
-    }
+    println!("denomination: {}\n", dbc.inner.content.denomination().amount() );
 
     println!("owner: {}\n", to_be_hex(&dbc.owner)?);
-
-    // dbc.content.parents and dbc.transaction.inputs are the same
-    // so for now we are just displaying the latter.
-    // println!("parents:");
-    // for p in &dbc.content.parents {
-    //     println!("  {}", encode(p))
-    // }
-
-    println!("inputs:");
-    for i in &dbc.inner.transaction.inputs {
-        println!("  {}", encode(i))
-    }
-
-    if outputs {
-        println!("\noutputs:");
-        for i in &dbc.inner.transaction.outputs {
-            println!("  {}", encode(i))
-        }
-    }
 
     println!("\nData:");
     println!("{}", to_be_hex(&dbc)?);
@@ -468,7 +437,7 @@ fn decode_input() -> Result<()> {
             match sks_input.as_str() {
                 "none" => {
                     println!("\n\n-- Start DBC --\n");
-                    print_dbc_human(&from_be_bytes(&bytes)?, true, None)?;
+                    print_dbc_human(&from_be_bytes(&bytes)?, true)?;
                     println!("-- End DBC --\n");
                 }
                 _ => {
@@ -477,7 +446,7 @@ fn decode_input() -> Result<()> {
                     let keys = secret_key_set_to_shares(&sks);
 
                     println!("\n\n-- Start DBC --\n");
-                    print_dbc_human(&from_be_bytes(&bytes)?, true, Some((&keys.0, &keys.1)))?;
+                    print_dbc_human(&from_be_bytes(&bytes)?, true)?;
                     println!("-- End DBC --\n");
                 }
             }
@@ -624,13 +593,8 @@ fn prepare_tx() -> Result<()> {
             }
         }
 
-        let amount_secrets = dbc
-            .inner
-            .content
-            .amount_secrets_by_secret_key_shares(&dbc.owner, &secrets)?;
-
         inputs_owners.insert(dbc.inner.name(), dbc.owner);
-        tx_builder = tx_builder.add_input(dbc.inner, amount_secrets);
+        tx_builder = tx_builder.add_input(dbc.inner);
     }
 
     let mut i = 0u32;
@@ -677,10 +641,14 @@ fn prepare_tx() -> Result<()> {
 
         let pub_out_set: PublicKeySet = from_be_hex(&pub_out)?;
 
-        tx_builder = tx_builder.add_output(Output {
-            amount,
-            owner: pub_out_set.public_key(),
-        });
+        let denoms = Denomination::make_change(amount);
+
+        for denomination in denoms {
+            tx_builder = tx_builder.add_output(Output {
+                denomination,
+                owner: pub_out_set.public_key(),
+            });
+        }
 
         pk_pks.insert(pub_out_set.public_key(), pub_out_set);
         i += 1;

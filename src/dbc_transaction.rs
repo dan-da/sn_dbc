@@ -8,7 +8,7 @@
 
 use crate::{DbcContentHash, Denomination, Hash, Result};
 use blsbs::Envelope;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
 use tiny_keccak::{Hasher, Sha3};
 
@@ -20,10 +20,6 @@ use tiny_keccak::{Hasher, Sha3};
 ///  sum(inputs) must equal sum(outputs)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DbcEnvelope {
-    #[serde(
-        serialize_with = "envelope_serialize",
-        deserialize_with = "envelope_deserialize"
-    )]
     pub envelope: Envelope,
     pub denomination: Denomination,
 }
@@ -49,24 +45,6 @@ impl DbcEnvelope {
             denomination,
         })
     }
-}
-
-fn envelope_serialize<S>(e: &Envelope, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    s.serialize_bytes(&e.to_bytes())
-}
-
-fn envelope_deserialize<'de, D>(deserializer: D) -> Result<Envelope, D::Error>
-where
-    D: serde::de::Deserializer<'de>,
-{
-    let vbytes = Vec::<u8>::deserialize(deserializer)?;
-    let mut bytes: [u8; 96] = [0; 96];
-    bytes.copy_from_slice(&vbytes[0..]);
-
-    Ok(Envelope::from(bytes))
 }
 
 /// The spent identifier of the outputs created from this input

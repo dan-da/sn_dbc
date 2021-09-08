@@ -147,8 +147,8 @@ pub struct ReissueRequest {
     pub transaction: ReissueTransaction,
 }
 
-// #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
-#[derive(Eq, PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
+// #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueShare {
     pub dbc_transaction: DbcTransaction,
     pub signed_envelope_shares: Vec<SignedEnvelopeShare>, // fixme: Vec does not guarantee uniqueness.

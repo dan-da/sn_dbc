@@ -69,14 +69,14 @@ impl TransactionBuilder {
         let map = outputs_content
             .iter()
             .map(|c| {
-                let envelope = SlipPreparer::new().place_slip_in_envelope(&c.slip());
+                let envelope = SlipPreparer::new()?.place_slip_in_envelope(&c.slip());
                 let dbc_envelope = DbcEnvelope {
                     envelope,
                     denomination: c.denomination(),
                 };
-                (dbc_envelope, c.clone()) // todo: avoid this clone.
+                Ok((dbc_envelope, c.clone())) // todo: avoid this clone.
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<Result<HashMap<_, _>>>()?;
 
         let outputs: HashSet<DbcEnvelope> = HashSet::from_iter(map.keys().cloned());
 
