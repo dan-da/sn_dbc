@@ -364,6 +364,7 @@ mod tests {
         // tests::{TinyInt, TinyVec},
         DbcBuilder,
         Output, //  SimpleKeyManager, SimpleSigner,
+        ReissueRequestBuilder,
         SimpleKeyManager,
         SimpleSigner,
         TransactionBuilder,
@@ -446,16 +447,14 @@ mod tests {
             })
             .build()?;
 
-        let sig_share = genesis_owner.secret_key_share.sign(&genesis_dbc.name());
-
-        let sig = genesis_owner
-            .public_key_set
-            .combine_signatures(vec![(genesis_owner.index, &sig_share)])?;
-
-        let rr = ReissueRequest {
-            transaction: tx.clone(),
-            input_ownership_proofs: HashMap::from_iter([(genesis_dbc.name(), sig)]),
-        };
+        let rr = ReissueRequestBuilder::new(tx.clone())
+            .add_dbc_signer(
+                genesis_dbc.name(),
+                genesis_owner.public_key_set,
+                genesis_owner.index,
+                genesis_owner.secret_key_share,
+            )
+            .build()?;
 
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
@@ -515,16 +514,14 @@ mod tests {
             .add_outputs(change_outputs)
             .build()?;
 
-        let sig_share = genesis_owner.secret_key_share.sign(&genesis_dbc.name());
-
-        let sig = genesis_owner
-            .public_key_set
-            .combine_signatures(vec![(genesis_owner.index, &sig_share)])?;
-
-        let rr = ReissueRequest {
-            transaction: tx.clone(),
-            input_ownership_proofs: HashMap::from_iter([(genesis_dbc.name(), sig)]),
-        };
+        let rr = ReissueRequestBuilder::new(tx.clone())
+            .add_dbc_signer(
+                genesis_dbc.name(),
+                genesis_owner.public_key_set,
+                genesis_owner.index,
+                genesis_owner.secret_key_share,
+            )
+            .build()?;
 
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
