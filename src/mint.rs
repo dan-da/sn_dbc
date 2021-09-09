@@ -20,7 +20,7 @@ use crate::{
 use blsbs::{SignedEnvelopeShare, SlipPreparer};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     iter::FromIterator,
 };
 
@@ -145,6 +145,9 @@ impl ReissueTransaction {
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
 pub struct ReissueRequest {
     pub transaction: ReissueTransaction,
+
+    // Signatures from the owners of each input, signing `self.dbc.name()`
+    pub input_ownership_proofs: HashMap<DbcContentHash, blsttc::Signature>,
 }
 
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
@@ -184,7 +187,13 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         Vec<SignedEnvelopeShare>,
     )> {
         let slip_preparer = SlipPreparer::from_fr(1); // deterministic/known
-        let content = DbcContent::new_with_nonce(GENESIS_DBC_INPUT.0, Denomination::Genesis); // deterministic/known
+        let content = DbcContent::new(
+            self.key_manager
+                .public_key_set()
+                .map_err(|e| Error::Signing(e.to_string()))?
+                .public_key(),
+            Denomination::Genesis,
+        );
         let envelope = slip_preparer.place_slip_in_envelope(&content.slip());
         let dbc_envelope = DbcEnvelope {
             envelope,
@@ -251,6 +260,17 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         if !inputs_belonging_to_mint.is_subset(&dbc_transaction.inputs) {
             // fixme:  better error name?
             return Err(Error::FilteredInputNotPresent);
+        }
+
+        for input_dbc in reissue_req.transaction.inputs.iter() {
+            match reissue_req.input_ownership_proofs.get(&input_dbc.name()) {
+                Some(sig) => {
+                    if !input_dbc.owner().verify(sig, input_dbc.name()) {
+                        return Err(Error::FailedSignature);
+                    }
+                }
+                None => return Err(Error::MissingInputOwnerProof),
+            }
         }
 
         // todo: validate that each input has mint's sig and detect
@@ -340,6 +360,7 @@ mod tests {
         // tests::{TinyInt, TinyVec},
         DbcBuilder,
         Output, //  SimpleKeyManager, SimpleSigner,
+        ReissueRequestBuilder,
         SimpleKeyManager,
         SimpleSigner,
         TransactionBuilder,
@@ -408,7 +429,7 @@ mod tests {
     // #[quickcheck]
     #[test]
     fn reissue_genesis() -> Result<(), Error> {
-        let (genesis_dbc, mut genesis_node, _genesis_owner) = genesis()?;
+        let (genesis_dbc, mut genesis_node, genesis_owner) = genesis()?;
 
         assert!(genesis_dbc
             .confirm_valid(genesis_node.key_manager())
@@ -418,12 +439,18 @@ mod tests {
             .add_input(genesis_dbc.clone())
             .add_output(Output {
                 denomination: Denomination::Genesis,
+                owner: genesis_owner.public_key_set.public_key(),
             })
             .build()?;
 
-        let rr = ReissueRequest {
-            transaction: tx.clone(),
-        };
+        let rr = ReissueRequestBuilder::new(tx.clone())
+            .add_dbc_signer(
+                genesis_dbc.name(),
+                genesis_owner.public_key_set,
+                genesis_owner.index,
+                genesis_owner.secret_key_share,
+            )
+            .build()?;
 
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
@@ -448,7 +475,7 @@ mod tests {
 
     #[test]
     fn reissue_genesis_multi_output() -> Result<(), Error> {
-        let (genesis_dbc, mut genesis_node, _genesis_owner) = genesis()?;
+        let (genesis_dbc, mut genesis_node, genesis_owner) = genesis()?;
 
         assert!(genesis_dbc
             .confirm_valid(genesis_node.key_manager())
@@ -459,13 +486,19 @@ mod tests {
         println!("pay: {:#?}", pay_denoms);
         let pay_outputs: Vec<Output> = pay_denoms
             .iter()
-            .map(|d| Output { denomination: *d })
+            .map(|d| Output {
+                denomination: *d,
+                owner: genesis_owner.public_key_set.public_key(),
+            })
             .collect();
         let change_amt = Denomination::Genesis.amount() - pay_amt;
         let change_denoms = Denomination::make_change(change_amt);
         let change_outputs: Vec<Output> = change_denoms
             .iter()
-            .map(|d| Output { denomination: *d })
+            .map(|d| Output {
+                denomination: *d,
+                owner: genesis_owner.public_key_set.public_key(),
+            })
             .collect();
         println!("change: {:#?}", change_denoms);
 
@@ -477,9 +510,14 @@ mod tests {
             .add_outputs(change_outputs)
             .build()?;
 
-        let rr = ReissueRequest {
-            transaction: tx.clone(),
-        };
+        let rr = ReissueRequestBuilder::new(tx.clone())
+            .add_dbc_signer(
+                genesis_dbc.name(),
+                genesis_owner.public_key_set,
+                genesis_owner.index,
+                genesis_owner.secret_key_share,
+            )
+            .build()?;
 
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
