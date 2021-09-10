@@ -8,7 +8,7 @@
 
 use crate::{Denomination, Error, Result};
 use blsbs::{BlindSignerShare, Envelope, SignatureExaminer, SignedEnvelopeShare, Slip};
-use blsttc::SecretKeyShare;
+use blsttc::{IntoFr, SecretKeyShare};
 pub use blsttc::{PublicKey, PublicKeySet, Signature};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -79,7 +79,10 @@ impl From<bls_dkg::outcome::Outcome> for SimpleSigner {
 }
 
 impl SimpleSigner {
-    pub fn new(public_key_set: PublicKeySet, secret_key_share: (u64, SecretKeyShare)) -> Self {
+    pub fn new<T: IntoFr>(
+        public_key_set: PublicKeySet,
+        secret_key_share: (T, SecretKeyShare),
+    ) -> Self {
         Self {
             blind_signer_share: BlindSignerShare::new(
                 secret_key_share.1,
