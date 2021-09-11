@@ -14,6 +14,11 @@ pub struct Output {
     pub owner: blsttc::PublicKey,
 }
 
+pub struct OutputSecret {
+    pub slip_preparer: SlipPreparer,
+    pub dbc_content: DbcContent,
+}
+
 #[derive(Default)]
 pub struct TransactionBuilder {
     pub inputs: HashSet<Dbc>,
@@ -59,20 +64,15 @@ impl TransactionBuilder {
     // Note: The HashMap output is necessary because Envelope, SignedEnvelopeShare do not
     //       contain the Slip itself, so we must keep DbcContent around.
     //       If they were to contain an encrypted Slip, we would not need this.
-    pub fn build(
-        self,
-    ) -> Result<(
-        ReissueTransaction,
-        HashMap<DbcEnvelope, (SlipPreparer, DbcContent)>,
-    )> {
+    pub fn build(self) -> Result<(ReissueTransaction, HashMap<DbcEnvelope, OutputSecret>)> {
         let outputs_content = self
             .outputs
             .iter()
             .map(|o| DbcContent::new(o.owner, o.denomination))
             .collect::<HashSet<_>>();
 
-        let map = outputs_content
-            .iter()
+        let output_secrets = outputs_content
+            .into_iter()
             .map(|c| {
                 let slip_preparer = SlipPreparer::new()?;
                 let envelope = slip_preparer.place_slip_in_envelope(&c.slip());
@@ -80,17 +80,22 @@ impl TransactionBuilder {
                     envelope,
                     denomination: c.denomination(),
                 };
-                Ok((dbc_envelope, (slip_preparer, c.clone()))) // todo: avoid this clone.
+                // todo: avoid this clone.
+                let output_secret = OutputSecret {
+                    slip_preparer,
+                    dbc_content: c,
+                };
+                Ok((dbc_envelope, output_secret))
             })
             .collect::<Result<HashMap<_, _>>>()?;
 
-        let outputs: HashSet<DbcEnvelope> = HashSet::from_iter(map.keys().cloned());
+        let outputs: HashSet<DbcEnvelope> = HashSet::from_iter(output_secrets.keys().cloned());
 
         let rt = ReissueTransaction {
             inputs: self.inputs,
             outputs,
         };
-        Ok((rt, map))
+        Ok((rt, output_secrets))
     }
 }
 
@@ -212,7 +217,7 @@ pub struct DbcBuilder {
     // Note: this is necessary because Envelope, SignedEnvelopeShare do not
     //       contain the Slip itself, so we must keep DbcContent around.
     //       If they were to contain an encrypted Slip, we would not need this.
-    pub outputs_content: HashMap<DbcEnvelope, (SlipPreparer, DbcContent)>,
+    pub output_secrets: HashMap<DbcEnvelope, OutputSecret>,
 
     pub disable_output_validation: bool,
 }
@@ -223,7 +228,7 @@ impl DbcBuilder {
         Self {
             reissue_transaction: Some(reissue_transaction),
             reissue_shares: Default::default(),
-            outputs_content: Default::default(),
+            output_secrets: Default::default(),
             disable_output_validation: Default::default(),
         }
     }
@@ -241,29 +246,33 @@ impl DbcBuilder {
     }
 
     /// Add an output DbcContent
-    pub fn add_output_content(
+    pub fn add_output_secret(
         mut self,
         dbc_envelope: DbcEnvelope,
-        slip_preparer: SlipPreparer,
-        content: DbcContent,
+        output_secret: OutputSecret,
     ) -> Self {
-        self.outputs_content
-            .insert(dbc_envelope, (slip_preparer, content));
+        self.output_secrets.insert(dbc_envelope, output_secret);
         self
     }
 
-    /// Add multiple DbcContent
-    pub fn add_outputs_content(
+    /// Add multiple OutputSecret
+    pub fn add_output_secrets(
         mut self,
-        contents: impl IntoIterator<Item = (DbcEnvelope, (SlipPreparer, DbcContent))>,
+        contents: impl IntoIterator<Item = (DbcEnvelope, OutputSecret)>,
     ) -> Self {
-        self.outputs_content.extend(contents);
+        self.output_secrets.extend(contents);
         self
     }
 
     /// Add a ReissueShare from Mint::reissue()
     pub fn add_reissue_share(mut self, reissue_share: ReissueShare) -> Self {
         self.reissue_shares.push(reissue_share);
+        self
+    }
+
+    /// Add multiple ReissueShare from Mint::reissue()
+    pub fn add_reissue_shares(mut self, shares: impl IntoIterator<Item = ReissueShare>) -> Self {
+        self.reissue_shares.extend(shares);
         self
     }
 
@@ -282,8 +291,8 @@ impl DbcBuilder {
             return Err(Error::NoReissueShares);
         }
 
-        if self.outputs_content.is_empty() {
-            return Err(Error::NoOutputsContent);
+        if self.output_secrets.is_empty() {
+            return Err(Error::NoOutputSecrets);
         }
 
         let reissue_transaction = match self.reissue_transaction {
@@ -352,7 +361,7 @@ impl DbcBuilder {
 
         // Generate final output Dbcs
         let mut output_dbcs: Vec<Dbc> = Default::default();
-        for (dbc_envelope, (slip_preparer, content)) in self.outputs_content {
+        for (dbc_envelope, output_secret) in self.output_secrets.into_iter() {
             // Transform Vec<SignedEnvelopeShare> to BTreeMap<Fr, SignatureShare>
             let mut mint_sig_shares: BTreeMap<Fr, SignatureShare> = Default::default();
             for ses in signed_envelope_shares
@@ -362,12 +371,11 @@ impl DbcBuilder {
             {
                 mint_sig_shares.insert(
                     ses.signature_share_index(),
-                    ses.signature_share_for_slip(slip_preparer.blinding_factor())?,
+                    ses.signature_share_for_slip(output_secret.slip_preparer.blinding_factor())?,
                 );
             }
 
             let denom_idx = dbc_envelope.denomination.to_be_bytes();
-
             let mint_derived_pks = mint_public_key_set.derive_child(&denom_idx);
 
             // Combine signatures from all the mint nodes to obtain Mint's Signature.
@@ -375,7 +383,7 @@ impl DbcBuilder {
 
             // Form the final output DBCs, with Mint's Signature for each.
             let dbc = Dbc {
-                content,
+                content: output_secret.dbc_content,
                 mint_public_key: mint_derived_pks.public_key(),
                 mint_signature: mint_sig,
             };

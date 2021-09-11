@@ -22,7 +22,7 @@ use rustyline::Editor;
 use serde::{Deserialize, Serialize};
 use sn_dbc::{
     Amount, Dbc, DbcBuilder, DbcContent, DbcEnvelope, DbcTransaction, Denomination, Hash, MintNode,
-    Output, ReissueRequest, ReissueRequestBuilder, ReissueTransaction,
+    Output, OutputSecret, ReissueRequest, ReissueRequestBuilder, ReissueTransaction,
     SimpleKeyManager as KeyManager, SimpleSigner as Signer, SimpleSpendBook as SpendBook,
     TransactionBuilder,
 };
@@ -961,15 +961,15 @@ fn reissue_ez(mintinfo: &mut MintInfo) -> Result<()> {
     println!("\n\nThank-you.   Generating DBC(s)...\n\n");
 
     let input_hashes = tx_builder.inputs_hashes();
-    let (transaction, outputs_content) = tx_builder.build()?;
+    let (transaction, output_secrets) = tx_builder.build()?;
 
     // generate output Hash -> PublicKeySet map
     let mut outputs_owners: HashMap<Hash, PublicKeySet> = Default::default();
-    for (_dbc_envelope, content) in outputs_content.iter() {
+    for (_dbc_envelope, output_secret) in output_secrets.iter() {
         let pks = pk_pks
-            .get(content.1.owner())
+            .get(output_secret.dbc_content.owner())
             .ok_or_else(|| anyhow!("pubkey not found"))?;
-        outputs_owners.insert(content.1.hash(), pks.clone());
+        outputs_owners.insert(output_secret.dbc_content.hash(), pks.clone());
     }
 
     rr_builder = rr_builder.set_reissue_transaction(transaction);
@@ -982,7 +982,7 @@ fn reissue_ez(mintinfo: &mut MintInfo) -> Result<()> {
         &reissue_request,
         &input_hashes,
         &outputs_owners,
-        outputs_content,
+        output_secrets,
     )
 }
 
@@ -992,10 +992,10 @@ fn reissue_exec(
     reissue_request: &ReissueRequest,
     input_hashes: &BTreeSet<Hash>,
     outputs_pks: &HashMap<Hash, PublicKeySet>,
-    outputs_content: HashMap<DbcEnvelope, (SlipPreparer, DbcContent)>,
+    output_secrets: HashMap<DbcEnvelope, OutputSecret>,
 ) -> Result<()> {
     let mut dbc_builder =
-        DbcBuilder::new(reissue_request.transaction.clone()).add_outputs_content(outputs_content);
+        DbcBuilder::new(reissue_request.transaction.clone()).add_output_secrets(output_secrets);
 
     // Mint is multi-node.  So each mint node must execute MintNode::reissue() and
     // provide its SignatureShare, which the client must then combine together

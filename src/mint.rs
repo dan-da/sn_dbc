@@ -350,7 +350,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .map_err(|e| Error::Signing(e.to_string()))
     }
 
-    fn sign_output_envelopes<'a>(
+    fn sign_output_envelopes(
         &self,
         outputs: impl IntoIterator<Item = DbcEnvelope>,
     ) -> Result<Vec<SignedEnvelopeShare>> {
@@ -459,7 +459,7 @@ mod tests {
             .confirm_valid()
             .is_ok());
 
-        let (tx, outputs_content) = TransactionBuilder::default()
+        let (tx, output_secrets) = TransactionBuilder::default()
             .add_input(genesis_dbc.clone())
             .add_output(Output {
                 denomination: Denomination::Genesis,
@@ -479,7 +479,7 @@ mod tests {
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
         let dbcs = DbcBuilder::new(tx)
-            .add_outputs_content(outputs_content)
+            .add_output_secrets(output_secrets)
             .add_reissue_share(rs)
             .build()?;
 
@@ -534,7 +534,7 @@ mod tests {
 
         let num_outputs = pay_outputs.len() + change_outputs.len();
 
-        let (tx, outputs_content) = TransactionBuilder::default()
+        let (tx, output_secrets) = TransactionBuilder::default()
             .add_input(genesis_dbc.clone())
             .add_outputs(pay_outputs)
             .add_outputs(change_outputs)
@@ -552,7 +552,7 @@ mod tests {
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
         let dbcs = DbcBuilder::new(tx)
-            .add_outputs_content(outputs_content)
+            .add_output_secrets(output_secrets)
             .add_reissue_share(rs)
             .build()?;
 
@@ -578,7 +578,7 @@ mod tests {
 
         // 1. Reissue Genesis DBC to A
 
-        let (tx, outputs_content) = TransactionBuilder::default()
+        let (tx, output_secrets) = TransactionBuilder::default()
             .add_input(genesis_dbc.clone())
             .add_output(Output {
                 denomination: Denomination::Genesis,
@@ -598,7 +598,7 @@ mod tests {
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
 
         let dbcs = DbcBuilder::new(tx)
-            .add_outputs_content(outputs_content)
+            .add_output_secrets(output_secrets)
             .add_reissue_share(rs)
             .build()?;
 
@@ -606,7 +606,7 @@ mod tests {
 
         let dbc_a = &dbcs[0];
 
-        let (tx, outputs_content) = TransactionBuilder::default()
+        let (tx, output_secrets) = TransactionBuilder::default()
             .add_input(dbc_a.clone())
             .add_output(Output {
                 denomination: Denomination::Genesis,
@@ -626,7 +626,7 @@ mod tests {
         let rs = genesis_node.reissue(rr, BTreeSet::from_iter([dbc_a.name()]))?;
 
         let dbcs = DbcBuilder::new(tx)
-            .add_outputs_content(outputs_content)
+            .add_output_secrets(output_secrets)
             .add_reissue_share(rs)
             .build()?;
 

@@ -72,7 +72,7 @@ pub enum Error {
     ReissueShareDbcTransactionMismatch,
 
     #[error("No output envelope/content mappings")]
-    NoOutputsContent,
+    NoOutputSecrets,
 
     #[error("No reissue shares")]
     NoReissueShares,

@@ -28,7 +28,7 @@ mod key_manager;
 mod mint;
 
 pub use crate::{
-    builder::{DbcBuilder, Output, ReissueRequestBuilder, TransactionBuilder},
+    builder::{DbcBuilder, Output, OutputSecret, ReissueRequestBuilder, TransactionBuilder},
     dbc::Dbc,
     dbc_content::DbcContent,
     dbc_transaction::{DbcEnvelope, DbcTransaction},
