@@ -25,6 +25,16 @@ pub struct DbcEnvelope {
 }
 
 impl DbcEnvelope {
+    pub fn hash(&self) -> Hash {
+        let mut sha3 = Sha3::v256();
+        sha3.update(&self.envelope.to_bytes());
+        sha3.update(&self.denomination.to_be_bytes());
+
+        let mut hash = [0; 32];
+        sha3.finalize(&mut hash);
+        Hash(hash)
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut b: Vec<u8> = vec![];
         b.extend(self.denomination.to_be_bytes());

@@ -101,12 +101,19 @@ impl ReissueTransaction {
         }
     }
 
-    pub fn validate<K: KeyManager>(&self, verifier: &K) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         self.validate_balance()?;
-        self.validate_input_dbcs(verifier)?;
+        self.validate_input_dbcs()?;
         self.validate_outputs()?;
         Ok(())
     }
+
+    // pub fn validate<K: KeyManager>(&self, verifier: &K) -> Result<()> {
+    //     self.validate_balance()?;
+    //     self.validate_input_dbcs(verifier)?;
+    //     self.validate_outputs()?;
+    //     Ok(())
+    // }
 
     fn validate_balance(&self) -> Result<()> {
         let inputs: Amount = self
@@ -123,17 +130,29 @@ impl ReissueTransaction {
         }
     }
 
-    fn validate_input_dbcs<K: KeyManager>(&self, verifier: &K) -> Result<()> {
+    fn validate_input_dbcs(&self) -> Result<()> {
         if self.inputs.is_empty() {
             return Err(Error::TransactionMustHaveAnInput);
         }
 
         for input in self.inputs.iter() {
-            input.confirm_valid(verifier)?;
+            input.confirm_valid()?;
         }
 
         Ok(())
     }
+
+    // fn validate_input_dbcs<K: KeyManager>(&self, verifier: &K) -> Result<()> {
+    //     if self.inputs.is_empty() {
+    //         return Err(Error::TransactionMustHaveAnInput);
+    //     }
+
+    //     for input in self.inputs.iter() {
+    //         input.confirm_valid()?;
+    //     }
+
+    //     Ok(())
+    // }
 
     fn validate_outputs(&self) -> Result<()> {
         // Todo: outputs are opaque to mint.  anything to do here?
@@ -184,7 +203,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         DbcTransaction,
         SlipPreparer,
         PublicKeySet,
-        Vec<SignedEnvelopeShare>,
+        SignedEnvelopeShare,
     )> {
         let slip_preparer = SlipPreparer::from_fr(1); // deterministic/known
         let content = DbcContent::new(
@@ -218,10 +237,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .log(GENESIS_DBC_INPUT, transaction.clone())
             .map_err(|e| Error::SpendBook(e.to_string()))?;
 
-        let signed_envelope_shares = vec![self
-            .key_manager
-            .sign_envelope(dbc_envelope.envelope, dbc_envelope.denomination)
-            .map_err(|e| Error::Signing(e.to_string()))?];
+        let signed_envelope_share = self.sign_output_envelope(dbc_envelope)?;
 
         let public_key_set = self
             .key_manager
@@ -233,7 +249,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             transaction,
             slip_preparer,
             public_key_set,
-            signed_envelope_shares,
+            signed_envelope_share,
         ))
     }
 
@@ -254,7 +270,8 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         reissue_req: ReissueRequest,
         inputs_belonging_to_mint: BTreeSet<DbcContentHash>,
     ) -> Result<ReissueShare> {
-        reissue_req.transaction.validate(self.key_manager())?;
+        // reissue_req.transaction.validate(self.key_manager())?;
+        reissue_req.transaction.validate()?;
         let dbc_transaction = reissue_req.transaction.blinded();
 
         if !inputs_belonging_to_mint.is_subset(&dbc_transaction.inputs) {
@@ -262,11 +279,12 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             return Err(Error::FilteredInputNotPresent);
         }
 
+        // Validate that every input DBC has a valid proof of ownership.
         for input_dbc in reissue_req.transaction.inputs.iter() {
             match reissue_req.input_ownership_proofs.get(&input_dbc.name()) {
                 Some(sig) => {
                     if !input_dbc.owner().verify(sig, input_dbc.name()) {
-                        return Err(Error::FailedSignature);
+                        return Err(Error::FailedOwnerSignature);
                     }
                 }
                 None => return Err(Error::MissingInputOwnerProof),
@@ -292,7 +310,8 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
                 // This input has already been spent, return the spend transaction to the user
                 // fixme:  shouldn't we already have full mint sig from the spendbook?
                 //         we shouldn't need to sign again with a sigshare.
-                let signed_envelope_shares = self.sign_output_envelopes(&dbc_transaction)?;
+                let signed_envelope_shares =
+                    self.sign_output_envelopes(dbc_transaction.outputs.clone())?;
                 return Err(Error::DbcAlreadySpent {
                     dbc_transaction,
                     public_key_set,
@@ -301,7 +320,7 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             }
         }
 
-        let signed_envelope_shares = self.sign_output_envelopes(&dbc_transaction)?;
+        let signed_envelope_shares = self.sign_output_envelopes(dbc_transaction.outputs.clone())?;
 
         for input in reissue_req
             .transaction
@@ -309,6 +328,8 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .iter()
             .filter(|&i| inputs_belonging_to_mint.contains(&i.name()))
         {
+            // fixme: It seems wasteful to log entire tx for each DBC.  I think it should only
+            // be recording that the DBC itself is spent.
             self.spendbook
                 .log(input.name(), dbc_transaction.clone())
                 .map_err(|e| Error::SpendBook(e.to_string()))?;
@@ -323,18 +344,19 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         Ok(reissue_share)
     }
 
-    fn sign_output_envelopes(
+    fn sign_output_envelope(&self, e: DbcEnvelope) -> Result<SignedEnvelopeShare> {
+        self.key_manager
+            .sign_envelope(e.envelope, e.denomination)
+            .map_err(|e| Error::Signing(e.to_string()))
+    }
+
+    fn sign_output_envelopes<'a>(
         &self,
-        transaction: &DbcTransaction,
+        outputs: impl IntoIterator<Item = DbcEnvelope>,
     ) -> Result<Vec<SignedEnvelopeShare>> {
-        transaction
-            .outputs
-            .iter()
-            .map(|e| {
-                self.key_manager
-                    .sign_envelope(e.envelope.clone(), e.denomination)
-                    .map_err(|e| Error::Signing(e.to_string()))
-            })
+        outputs
+            .into_iter()
+            .map(|e| self.sign_output_envelope(e))
             .collect::<Result<_>>()
     }
 
@@ -389,10 +411,10 @@ mod tests {
             _gen_dbc_trans,
             slip_preparer,
             mint_public_key_set,
-            signed_envelope_shares,
+            signed_envelope_share,
         ) = genesis_node.issue_genesis_dbc().unwrap();
 
-        let ses = &signed_envelope_shares[0];
+        let ses = &signed_envelope_share;
 
         let mint_signature = mint_public_key_set
             .combine_signatures(vec![(
@@ -401,7 +423,7 @@ mod tests {
             )])
             .unwrap();
 
-        let denom_idx = gen_dbc_content.denomination().amount().to_be_bytes();
+        let denom_idx = gen_dbc_content.denomination().to_be_bytes();
         let mint_derived_pks = mint_public_key_set.derive_child(&denom_idx);
 
         let genesis_dbc = Dbc {
@@ -416,11 +438,12 @@ mod tests {
     // #[quickcheck]
     #[test]
     fn prop_genesis() -> Result<(), Error> {
-        let (genesis_dbc, genesis_node, _genesis_owner) = genesis()?;
+        let (genesis_dbc, _genesis_node, _genesis_owner) = genesis()?;
 
         assert_eq!(genesis_dbc.denomination(), Denomination::Genesis);
         assert!(genesis_dbc
-            .confirm_valid(genesis_node.key_manager())
+            // .confirm_valid(genesis_node.key_manager())
+            .confirm_valid()
             .is_ok());
 
         Ok(())
@@ -432,7 +455,8 @@ mod tests {
         let (genesis_dbc, mut genesis_node, genesis_owner) = genesis()?;
 
         assert!(genesis_dbc
-            .confirm_valid(genesis_node.key_manager())
+            // .confirm_valid(genesis_node.key_manager())
+            .confirm_valid()
             .is_ok());
 
         let (tx, outputs_content) = TransactionBuilder::default()
@@ -459,6 +483,11 @@ mod tests {
             .add_reissue_share(rs)
             .build()?;
 
+        // assert!(dbcs[0]
+        //     // .confirm_valid(genesis_node.key_manager())
+        //     .confirm_valid()
+        //     .is_ok());
+
         // Just to give us a rough idea of the DBC size.
         // note that bincode typically adds some bytes.
         // todo: add a Dbc::to_bytes() method.
@@ -478,7 +507,8 @@ mod tests {
         let (genesis_dbc, mut genesis_node, genesis_owner) = genesis()?;
 
         assert!(genesis_dbc
-            .confirm_valid(genesis_node.key_manager())
+            // .confirm_valid(genesis_node.key_manager())
+            .confirm_valid()
             .is_ok());
 
         let pay_amt = Amount::MAX - 1;
@@ -538,6 +568,70 @@ mod tests {
         assert_eq!(dbcs.len(), num_outputs);
         assert_ne!(dbcs[0].name(), genesis_dbc.name());
         assert_eq!(outputs_sum, Denomination::Genesis.amount());
+
+        Ok(())
+    }
+
+    #[test]
+    fn reissue_genesis_and_child() -> Result<(), Error> {
+        let (genesis_dbc, mut genesis_node, genesis_owner) = genesis()?;
+
+        // 1. Reissue Genesis DBC to A
+
+        let (tx, outputs_content) = TransactionBuilder::default()
+            .add_input(genesis_dbc.clone())
+            .add_output(Output {
+                denomination: Denomination::Genesis,
+                owner: genesis_owner.public_key_set.public_key(),
+            })
+            .build()?;
+
+        let rr = ReissueRequestBuilder::new(tx.clone())
+            .add_dbc_signer(
+                genesis_dbc.name(),
+                genesis_owner.public_key_set.clone(),
+                genesis_owner.index,
+                genesis_owner.secret_key_share.clone(),
+            )
+            .build()?;
+
+        let rs = genesis_node.reissue(rr, BTreeSet::from_iter([genesis_dbc.name()]))?;
+
+        let dbcs = DbcBuilder::new(tx)
+            .add_outputs_content(outputs_content)
+            .add_reissue_share(rs)
+            .build()?;
+
+        // 2. Reissue A to B
+
+        let dbc_a = &dbcs[0];
+
+        let (tx, outputs_content) = TransactionBuilder::default()
+            .add_input(dbc_a.clone())
+            .add_output(Output {
+                denomination: Denomination::Genesis,
+                owner: genesis_owner.public_key_set.public_key(),
+            })
+            .build()?;
+
+        let rr = ReissueRequestBuilder::new(tx.clone())
+            .add_dbc_signer(
+                dbc_a.name(),
+                genesis_owner.public_key_set,
+                genesis_owner.index,
+                genesis_owner.secret_key_share,
+            )
+            .build()?;
+
+        let rs = genesis_node.reissue(rr, BTreeSet::from_iter([dbc_a.name()]))?;
+
+        let dbcs = DbcBuilder::new(tx)
+            .add_outputs_content(outputs_content)
+            .add_reissue_share(rs)
+            .build()?;
+
+        assert_eq!(dbcs.len(), 1);
+        assert_eq!(dbcs[0].denomination(), genesis_dbc.denomination());
 
         Ok(())
     }
@@ -998,7 +1092,7 @@ mod tests {
                         ))
                     );
                 }
-                Err(Error::FailedSignature) => {
+                Err(Error::FailedOwnerSignature) => {
                     assert_ne!(dbcs_with_invalid_ownership_proofs.len(), 0);
                 }
                 Err(Error::FailedUnblinding) => {

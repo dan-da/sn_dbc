@@ -24,15 +24,17 @@ pub enum Error {
     UnknownInput,
     #[error("Filtered input doesn't appear in the transaction")]
     FilteredInputNotPresent,
-    #[error("Failed signature check.")]
-    FailedSignature,
+    #[error("Failed mint signature check.")]
+    FailedMintSignature,
+    #[error("Failed dbc owner signature check.")]
+    FailedOwnerSignature,
     #[error("Unrecognised authority.")]
     UnrecognisedAuthority,
     #[error("At least one transaction input is missing a signature.")]
     MissingSignatureForInput,
     #[error("At least one input is missing an ownership proof")]
     MissingInputOwnerProof,
-    #[error("Mint request doesn't balance out sum(input) == sum(output)")]
+    #[error("Mint request doesn't balance out. sum(input) != sum(output)")]
     DbcReissueRequestDoesNotBalance,
     #[error("Failed to unblind an input DBC")]
     FailedUnblinding,
@@ -68,6 +70,9 @@ pub enum Error {
 
     #[error("The DbcTransaction in ReissueShare differs from that of ReissueTransaction")]
     ReissueShareDbcTransactionMismatch,
+
+    #[error("No output envelope/content mappings")]
+    NoOutputsContent,
 
     #[error("No reissue shares")]
     NoReissueShares,

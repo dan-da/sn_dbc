@@ -103,7 +103,7 @@ impl SimpleSigner {
     ) -> Result<SignedEnvelopeShare> {
         #[allow(clippy::redundant_closure)]
         self.blind_signer_share
-            .derive_child(&denomination.amount().to_be_bytes())
+            .derive_child(&denomination.to_be_bytes())
             .sign_envelope(envelope)
             .map_err(|e| Error::from(e))
     }
@@ -197,7 +197,7 @@ impl Keys {
         if is_verified {
             Ok(())
         } else {
-            Err(Error::FailedSignature)
+            Err(Error::FailedMintSignature)
         }
     }
 
@@ -207,7 +207,7 @@ impl Keys {
         if is_verified {
             Ok(())
         } else {
-            Err(Error::FailedSignature)
+            Err(Error::FailedMintSignature)
         }
     }
 

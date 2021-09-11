@@ -59,7 +59,12 @@ impl TransactionBuilder {
     // Note: The HashMap output is necessary because Envelope, SignedEnvelopeShare do not
     //       contain the Slip itself, so we must keep DbcContent around.
     //       If they were to contain an encrypted Slip, we would not need this.
-    pub fn build(self) -> Result<(ReissueTransaction, HashMap<DbcEnvelope, DbcContent>)> {
+    pub fn build(
+        self,
+    ) -> Result<(
+        ReissueTransaction,
+        HashMap<DbcEnvelope, (SlipPreparer, DbcContent)>,
+    )> {
         let outputs_content = self
             .outputs
             .iter()
@@ -69,12 +74,13 @@ impl TransactionBuilder {
         let map = outputs_content
             .iter()
             .map(|c| {
-                let envelope = SlipPreparer::new()?.place_slip_in_envelope(&c.slip());
+                let slip_preparer = SlipPreparer::new()?;
+                let envelope = slip_preparer.place_slip_in_envelope(&c.slip());
                 let dbc_envelope = DbcEnvelope {
                     envelope,
                     denomination: c.denomination(),
                 };
-                Ok((dbc_envelope, c.clone())) // todo: avoid this clone.
+                Ok((dbc_envelope, (slip_preparer, c.clone()))) // todo: avoid this clone.
             })
             .collect::<Result<HashMap<_, _>>>()?;
 
@@ -94,7 +100,7 @@ impl TransactionBuilder {
 pub struct ReissueRequestBuilder {
     pub reissue_transaction: Option<ReissueTransaction>,
     #[allow(clippy::type_complexity)]
-    pub signers_by_dbc: HashMap<DbcContentHash, Vec<(PublicKeySet, (Fr, SecretKeyShare))>>,
+    pub signers_by_dbc: HashMap<DbcContentHash, BTreeMap<PublicKeySet, (Fr, SecretKeyShare)>>,
 }
 
 impl ReissueRequestBuilder {
@@ -120,8 +126,8 @@ impl ReissueRequestBuilder {
         share_index: FR,
         secret_key_share: SecretKeyShare,
     ) -> Self {
-        let entry = self.signers_by_dbc.entry(dbc).or_insert_with(Vec::new);
-        (*entry).push((public_key_set, (share_index.into_fr(), secret_key_share)));
+        let entry = self.signers_by_dbc.entry(dbc).or_insert_with(BTreeMap::new);
+        (*entry).insert(public_key_set, (share_index.into_fr(), secret_key_share));
         self
     }
 
@@ -132,11 +138,18 @@ impl ReissueRequestBuilder {
         public_key_set: PublicKeySet,
         secret_key_shares: Vec<(FR, SecretKeyShare)>,
     ) -> Self {
-        let entry = self.signers_by_dbc.entry(dbc).or_insert_with(Vec::new);
+        let entry = self.signers_by_dbc.entry(dbc).or_insert_with(BTreeMap::new);
         for (idx, secret_key_share) in secret_key_shares.into_iter() {
-            (*entry).push((public_key_set.clone(), (idx.into_fr(), secret_key_share)));
+            (*entry).insert(public_key_set.clone(), (idx.into_fr(), secret_key_share));
         }
         self
+    }
+
+    pub fn num_signers_by_dbc(&self, hash: DbcContentHash) -> usize {
+        match self.signers_by_dbc.get(&hash) {
+            Some(s) => s.len(),
+            None => 0,
+        }
     }
 
     /// Aggregates SecretKeyShares for all DBC owners in a ReissueTransaction
@@ -197,9 +210,11 @@ pub struct DbcBuilder {
     pub reissue_shares: Vec<ReissueShare>,
 
     // Note: this is necessary because Envelope, SignedEnvelopeShare do not
-    //       contain the Slip itself, so we must DbcContent around.
+    //       contain the Slip itself, so we must keep DbcContent around.
     //       If they were to contain an encrypted Slip, we would not need this.
-    pub outputs_content: HashMap<DbcEnvelope, DbcContent>,
+    pub outputs_content: HashMap<DbcEnvelope, (SlipPreparer, DbcContent)>,
+
+    pub disable_output_validation: bool,
 }
 
 impl DbcBuilder {
@@ -209,19 +224,38 @@ impl DbcBuilder {
             reissue_transaction: Some(reissue_transaction),
             reissue_shares: Default::default(),
             outputs_content: Default::default(),
+            disable_output_validation: Default::default(),
         }
     }
 
+    /// Disable validation of output DBCs (enabled by default)
+    pub fn disable_output_validation(mut self) -> Self {
+        self.disable_output_validation = true;
+        self
+    }
+
+    /// Enable validation of output DBCs.  (enabled by default)
+    pub fn enable_output_validation(mut self) -> Self {
+        self.disable_output_validation = false;
+        self
+    }
+
     /// Add an output DbcContent
-    pub fn add_output_content(mut self, dbc_envelope: DbcEnvelope, content: DbcContent) -> Self {
-        self.outputs_content.insert(dbc_envelope, content);
+    pub fn add_output_content(
+        mut self,
+        dbc_envelope: DbcEnvelope,
+        slip_preparer: SlipPreparer,
+        content: DbcContent,
+    ) -> Self {
+        self.outputs_content
+            .insert(dbc_envelope, (slip_preparer, content));
         self
     }
 
     /// Add multiple DbcContent
     pub fn add_outputs_content(
         mut self,
-        contents: impl IntoIterator<Item = (DbcEnvelope, DbcContent)>,
+        contents: impl IntoIterator<Item = (DbcEnvelope, (SlipPreparer, DbcContent))>,
     ) -> Self {
         self.outputs_content.extend(contents);
         self
@@ -246,6 +280,10 @@ impl DbcBuilder {
     pub fn build(self) -> Result<Vec<Dbc>> {
         if self.reissue_shares.is_empty() {
             return Err(Error::NoReissueShares);
+        }
+
+        if self.outputs_content.is_empty() {
+            return Err(Error::NoOutputsContent);
         }
 
         let reissue_transaction = match self.reissue_transaction {
@@ -314,21 +352,26 @@ impl DbcBuilder {
 
         // Generate final output Dbcs
         let mut output_dbcs: Vec<Dbc> = Default::default();
-        for (dbc_envelope, content) in self.outputs_content {
-            // Transform Vec<SignedEnvelopeShare> to Vec<Fr, &SignatureShare>
-            let mint_sig_shares_ref: Vec<(Fr, &SignatureShare)> = signed_envelope_shares
+        for (dbc_envelope, (slip_preparer, content)) in self.outputs_content {
+            // Transform Vec<SignedEnvelopeShare> to BTreeMap<Fr, SignatureShare>
+            let mut mint_sig_shares: BTreeMap<Fr, SignatureShare> = Default::default();
+            for ses in signed_envelope_shares
                 .get(&dbc_envelope.envelope)
                 .unwrap()
                 .iter()
-                .map(|e| e.signature_share_for_envelope_with_index())
-                .collect();
+            {
+                mint_sig_shares.insert(
+                    ses.signature_share_index(),
+                    ses.signature_share_for_slip(slip_preparer.blinding_factor())?,
+                );
+            }
 
-            let denom_idx = dbc_envelope.denomination.amount().to_be_bytes();
+            let denom_idx = dbc_envelope.denomination.to_be_bytes();
 
             let mint_derived_pks = mint_public_key_set.derive_child(&denom_idx);
 
             // Combine signatures from all the mint nodes to obtain Mint's Signature.
-            let mint_sig = mint_derived_pks.combine_signatures(mint_sig_shares_ref)?;
+            let mint_sig = mint_derived_pks.combine_signatures(&mint_sig_shares)?;
 
             // Form the final output DBCs, with Mint's Signature for each.
             let dbc = Dbc {
@@ -336,6 +379,11 @@ impl DbcBuilder {
                 mint_public_key: mint_derived_pks.public_key(),
                 mint_signature: mint_sig,
             };
+
+            if !self.disable_output_validation {
+                dbc.confirm_valid()?;
+            }
+
             output_dbcs.push(dbc);
         }
 
