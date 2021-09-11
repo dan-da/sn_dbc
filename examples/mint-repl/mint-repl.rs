@@ -256,8 +256,8 @@ fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, _amount: Amount) -> Res
         mint_signature,
     };
 
-    // assert!(genesis_dbc.confirm_valid(mints[0].key_manager()).is_ok());
-    assert!(genesis_dbc.confirm_valid().is_ok());
+    assert!(genesis_dbc.confirm_valid(mints[0].key_manager()).is_ok());
+    // assert!(genesis_dbc.confirm_valid().is_ok());
 
     // Bob's your uncle.
     Ok(MintInfo {
@@ -523,8 +523,8 @@ fn validate(mintinfo: &MintInfo) -> Result<()> {
         from_be_hex(&dbc_input)?
     };
 
-    // match dbc.confirm_valid(mintinfo.mintnode()?.key_manager()) {
-    match dbc.confirm_valid() {
+    match dbc.confirm_valid(mintinfo.mintnode()?.key_manager()) {
+        // match dbc.confirm_valid() {
         Ok(_) => match mintinfo.mintnode()?.is_spent(dbc.name())? {
             true => println!("\nThis DBC is unspendable.  (valid but has already been spent)\n"),
             false => println!("\nThis DBC is spendable.   (valid and has not been spent)\n"),

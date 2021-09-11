@@ -16,7 +16,7 @@ use tiny_keccak::{Hasher, Sha3};
 /// with an amount written on the outside specifying
 /// the desired amount.  This tells the mint
 /// which key to sign with.  The amount for each
-/// DbcEnvelope is constrained by rule:
+/// DbcEnvelope is constrained/checked by reissue rule:
 ///  sum(inputs) must equal sum(outputs)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DbcEnvelope {

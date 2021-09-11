@@ -6,9 +6,8 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{DbcContent, Denomination, Error, Hash, PublicKey, Result, Signature};
+use crate::{DbcContent, Denomination, Error, Hash, KeyManager, PublicKey, Result, Signature};
 use serde::{Deserialize, Serialize};
-// use blsbs::SignatureExaminer;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Dbc {
@@ -58,27 +57,17 @@ impl Dbc {
         self.content.owner()
     }
 
-    pub fn confirm_valid(&self) -> Result<(), Error> {
-        use blsbs::SignatureExaminer;
-
-        let valid = SignatureExaminer::verify_signature_on_slip(
-            &self.content.slip(),
-            &self.mint_signature,
-            &self.mint_public_key,
-        );
-        if !valid {
-            println!("in here");
-            return Err(Error::FailedMintSignature);
-        }
-        Ok(())
-    }
-
     // Check that signature matches pubkey for content
-    // pub fn confirm_valid<K: KeyManager>(&self, _verifier: &K) -> Result<(), Error> {
-    //     verifier
-    //          .verify_slip(self.content.slip(), &self.mint_public_key, &self.mint_signature)
-    //          .map_err(|e| Error::Signing(e.to_string()))
-    // }
+    pub fn confirm_valid<K: KeyManager>(&self, verifier: &K) -> Result<(), Error> {
+        verifier
+            .verify_slip(
+                &self.content.slip(),
+                &self.content.denomination().to_be_bytes(),
+                &self.mint_public_key,
+                &self.mint_signature,
+            )
+            .map_err(|e| Error::Signing(e.to_string()))
+    }
 }
 /*
 #[cfg(test)]

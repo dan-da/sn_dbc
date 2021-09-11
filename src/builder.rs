@@ -61,9 +61,12 @@ impl TransactionBuilder {
         self.outputs.iter().map(|o| o.denomination.amount()).sum()
     }
 
-    // Note: The HashMap output is necessary because Envelope, SignedEnvelopeShare do not
-    //       contain the Slip itself, so we must keep DbcContent around.
-    //       If they were to contain an encrypted Slip, we would not need this.
+    // Note: The HashMap result is necessary because DbcBuilder needs a couple things:
+    //       1. The DbcContent. Because Envelope, SignedEnvelopeShare do not
+    //          contain the Slip itself. Another method would be to encrypt the Slip and
+    //          include with Envelope.
+    //       2. SlipPreparer.  the preparer's blinding_factor is needed to obtain the
+    //          SignatureShare for the Slip after reissue.
     pub fn build(self) -> Result<(ReissueTransaction, HashMap<DbcEnvelope, OutputSecret>)> {
         let outputs_content = self
             .outputs
@@ -80,7 +83,6 @@ impl TransactionBuilder {
                     envelope,
                     denomination: c.denomination(),
                 };
-                // todo: avoid this clone.
                 let output_secret = OutputSecret {
                     slip_preparer,
                     dbc_content: c,
@@ -214,12 +216,13 @@ pub struct DbcBuilder {
     pub reissue_transaction: Option<ReissueTransaction>,
     pub reissue_shares: Vec<ReissueShare>,
 
-    // Note: this is necessary because Envelope, SignedEnvelopeShare do not
-    //       contain the Slip itself, so we must keep DbcContent around.
-    //       If they were to contain an encrypted Slip, we would not need this.
+    // Note: We need a couple things, included in OutputSecret:
+    //       1. The DbcContent. Because Envelope, SignedEnvelopeShare do not
+    //          contain the Slip itself. Another method would be to encrypt the Slip and
+    //          include with Envelope.
+    //       2. SlipPreparer.  the preparer's blinding_factor is needed to obtain the
+    //          SignatureShare for the Slip after reissue.
     pub output_secrets: HashMap<DbcEnvelope, OutputSecret>,
-
-    pub disable_output_validation: bool,
 }
 
 impl DbcBuilder {
@@ -229,20 +232,7 @@ impl DbcBuilder {
             reissue_transaction: Some(reissue_transaction),
             reissue_shares: Default::default(),
             output_secrets: Default::default(),
-            disable_output_validation: Default::default(),
         }
-    }
-
-    /// Disable validation of output DBCs (enabled by default)
-    pub fn disable_output_validation(mut self) -> Self {
-        self.disable_output_validation = true;
-        self
-    }
-
-    /// Enable validation of output DBCs.  (enabled by default)
-    pub fn enable_output_validation(mut self) -> Self {
-        self.disable_output_validation = false;
-        self
     }
 
     /// Add an output DbcContent
@@ -283,9 +273,6 @@ impl DbcBuilder {
     }
 
     /// Build the output DBCs
-    ///
-    /// Note that the result Vec may be empty if the ReissueTransaction
-    /// has not been set or no ReissueShare has been added.
     pub fn build(self) -> Result<Vec<Dbc>> {
         if self.reissue_shares.is_empty() {
             return Err(Error::NoReissueShares);
@@ -387,10 +374,6 @@ impl DbcBuilder {
                 mint_public_key: mint_derived_pks.public_key(),
                 mint_signature: mint_sig,
             };
-
-            if !self.disable_output_validation {
-                dbc.confirm_valid()?;
-            }
 
             output_dbcs.push(dbc);
         }

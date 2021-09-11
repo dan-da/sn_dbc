@@ -13,19 +13,16 @@ use tiny_keccak::{Hasher, Sha3};
 
 use crate::{DbcContentHash, Denomination, Hash, Result};
 
-///    owner + blinding_factor = owner_blinded
-///    encrypt(owner, blinding_factor) = blinding_factor_encrypted
-///    owner = owner_blinded - blinding_factor
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DbcContent {
     owner: PublicKey,
 
     // temporary: to prevent collision if owner key is re-used.
+    // todo: remove when forced-one-time keys are added.
     nonce: [u8; 32],
 
-    // this is only a hint, DBC recipient(s) must validate Mint's sig and check
-    // Denomination of mint's pubkey.
-    // idea:  denonomination.amount() == derivation index of pubkey.
+    // DBC recipient(s) must validate with Mint's sig and
+    // denonomination.to_be_bytes() as derivation index of Mint's pubkey.
     denomination: Denomination,
 }
 

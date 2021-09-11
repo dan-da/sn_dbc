@@ -110,19 +110,19 @@ impl ReissueTransaction {
         }
     }
 
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate<K: KeyManager>(&self, verifier: &K) -> Result<()> {
+        // notes:
+        //  1. validate_balance() ensures that sum(input.denomination) = sum(output.denomination)
+        //  2. validate_input_dbcs() ensures that each input dbc has signature corresponding to
+        //         mint_master_pk.derive_child(input.denomination).
+        //         In other words: that the input denomination is correct and that the mint signed
+        //         the Dbc.
+        //  3. Because of (2) we can trust (1)
+        self.validate_input_dbcs(verifier)?;
         self.validate_balance()?;
-        self.validate_input_dbcs()?;
         self.validate_outputs()?;
         Ok(())
     }
-
-    // pub fn validate<K: KeyManager>(&self, verifier: &K) -> Result<()> {
-    //     self.validate_balance()?;
-    //     self.validate_input_dbcs(verifier)?;
-    //     self.validate_outputs()?;
-    //     Ok(())
-    // }
 
     fn validate_balance(&self) -> Result<()> {
         let inputs: Amount = self
@@ -139,29 +139,17 @@ impl ReissueTransaction {
         }
     }
 
-    fn validate_input_dbcs(&self) -> Result<()> {
+    fn validate_input_dbcs<K: KeyManager>(&self, verifier: &K) -> Result<()> {
         if self.inputs.is_empty() {
             return Err(Error::TransactionMustHaveAnInput);
         }
 
         for input in self.inputs.iter() {
-            input.confirm_valid()?;
+            input.confirm_valid(verifier)?;
         }
 
         Ok(())
     }
-
-    // fn validate_input_dbcs<K: KeyManager>(&self, verifier: &K) -> Result<()> {
-    //     if self.inputs.is_empty() {
-    //         return Err(Error::TransactionMustHaveAnInput);
-    //     }
-
-    //     for input in self.inputs.iter() {
-    //         input.confirm_valid()?;
-    //     }
-
-    //     Ok(())
-    // }
 
     fn validate_outputs(&self) -> Result<()> {
         // Todo: outputs are opaque to mint.  anything to do here?
@@ -179,12 +167,10 @@ pub struct ReissueRequest {
 }
 
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
-// #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ReissueShare {
     pub dbc_transaction: DbcTransaction,
     pub signed_envelope_shares: Vec<SignedEnvelopeShare>, // fixme: Vec does not guarantee uniqueness.
     pub public_key_set: PublicKeySet,
-    // pub mint_node_signatures: MintNodeSignatures,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -273,8 +259,8 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         reissue_req: ReissueRequest,
         inputs_belonging_to_mint: BTreeSet<DbcContentHash>,
     ) -> Result<ReissueShare> {
-        // reissue_req.transaction.validate(self.key_manager())?;
-        reissue_req.transaction.validate()?;
+        // See notes in ReissueTransaction::validate()
+        reissue_req.transaction.validate(self.key_manager())?;
         let dbc_transaction = reissue_req.transaction.blinded();
 
         if !inputs_belonging_to_mint.is_subset(&dbc_transaction.inputs) {
@@ -293,9 +279,6 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
                 None => return Err(Error::MissingInputOwnerProof),
             }
         }
-
-        // todo: validate that each input has mint's sig and detect
-        // amount(s) from Mint Sig.
 
         let public_key_set = self
             .key_manager
@@ -436,12 +419,11 @@ mod tests {
     // #[quickcheck]
     #[test]
     fn prop_genesis() -> Result<(), Error> {
-        let (genesis_dbc, _genesis_node, _genesis_owner) = genesis()?;
+        let (genesis_dbc, genesis_node, _genesis_owner) = genesis()?;
 
         assert_eq!(genesis_dbc.denomination(), Denomination::Genesis);
         assert!(genesis_dbc
-            // .confirm_valid(genesis_node.key_manager())
-            .confirm_valid()
+            .confirm_valid(genesis_node.key_manager())
             .is_ok());
 
         Ok(())
@@ -453,8 +435,7 @@ mod tests {
         let (genesis_dbc, mut genesis_node, genesis_owner) = genesis()?;
 
         assert!(genesis_dbc
-            // .confirm_valid(genesis_node.key_manager())
-            .confirm_valid()
+            .confirm_valid(genesis_node.key_manager())
             .is_ok());
 
         let (tx, output_secrets) = TransactionBuilder::default()
@@ -481,10 +462,8 @@ mod tests {
             .add_reissue_share(rs)
             .build()?;
 
-        // assert!(dbcs[0]
-        //     // .confirm_valid(genesis_node.key_manager())
-        //     .confirm_valid()
-        //     .is_ok());
+        // note: redundant.  DbcBuilder::build() validates each output DBC is valid.
+        assert!(dbcs[0].confirm_valid(genesis_node.key_manager()).is_ok());
 
         // Just to give us a rough idea of the DBC size.
         // note that bincode typically adds some bytes.
@@ -505,8 +484,7 @@ mod tests {
         let (genesis_dbc, mut genesis_node, genesis_owner) = genesis()?;
 
         assert!(genesis_dbc
-            // .confirm_valid(genesis_node.key_manager())
-            .confirm_valid()
+            .confirm_valid(genesis_node.key_manager())
             .is_ok());
 
         let pay_amt = Amount::MAX - 1;
