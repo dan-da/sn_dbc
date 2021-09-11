@@ -87,6 +87,15 @@ impl SimpleSpendBook {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct GenesisDbcShare {
+    pub dbc_content: DbcContent,
+    pub dbc_transaction: DbcTransaction,
+    pub slip_preparer: SlipPreparer,
+    pub public_key_set: PublicKeySet,
+    pub signed_envelope_share: SignedEnvelopeShare,
+}
+
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize)]
 pub struct ReissueTransaction {
     pub inputs: HashSet<Dbc>,
@@ -196,30 +205,22 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
         }
     }
 
-    pub fn issue_genesis_dbc(
-        &mut self,
-    ) -> Result<(
-        DbcContent,
-        DbcTransaction,
-        SlipPreparer,
-        PublicKeySet,
-        SignedEnvelopeShare,
-    )> {
+    pub fn issue_genesis_dbc(&mut self) -> Result<GenesisDbcShare> {
         let slip_preparer = SlipPreparer::from_fr(1); // deterministic/known
-        let content = DbcContent::new(
+        let dbc_content = DbcContent::new(
             self.key_manager
                 .public_key_set()
                 .map_err(|e| Error::Signing(e.to_string()))?
                 .public_key(),
             Denomination::Genesis,
         );
-        let envelope = slip_preparer.place_slip_in_envelope(&content.slip());
+        let envelope = slip_preparer.place_slip_in_envelope(&dbc_content.slip());
         let dbc_envelope = DbcEnvelope {
             envelope,
-            denomination: content.denomination(),
+            denomination: dbc_content.denomination(),
         };
 
-        let transaction = DbcTransaction {
+        let dbc_transaction = DbcTransaction {
             inputs: BTreeSet::from_iter([GENESIS_DBC_INPUT]),
             outputs: HashSet::from_iter([dbc_envelope.clone()]),
         };
@@ -229,12 +230,12 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .lookup(&GENESIS_DBC_INPUT)
             .map_err(|e| Error::SpendBook(e.to_string()))?
         {
-            Some(tx) if tx != &transaction => return Err(Error::GenesisInputAlreadySpent),
+            Some(tx) if tx != &dbc_transaction => return Err(Error::GenesisInputAlreadySpent),
             _ => (),
         }
 
         self.spendbook
-            .log(GENESIS_DBC_INPUT, transaction.clone())
+            .log(GENESIS_DBC_INPUT, dbc_transaction.clone())
             .map_err(|e| Error::SpendBook(e.to_string()))?;
 
         let signed_envelope_share = self.sign_output_envelope(dbc_envelope)?;
@@ -244,13 +245,15 @@ impl<K: KeyManager, S: SpendBook> MintNode<K, S> {
             .public_key_set()
             .map_err(|e| Error::Signing(e.to_string()))?;
 
-        Ok((
-            content,
-            transaction,
+        let share = GenesisDbcShare {
+            dbc_content,
+            dbc_transaction,
             slip_preparer,
             public_key_set,
             signed_envelope_share,
-        ))
+        };
+
+        Ok(share)
     }
 
     pub fn is_spent(&self, dbc_hash: DbcContentHash) -> Result<bool> {
@@ -406,28 +409,23 @@ mod tests {
         );
         let mut genesis_node = MintNode::new(key_manager, SimpleSpendBook::new());
 
-        let (
-            gen_dbc_content,
-            _gen_dbc_trans,
-            slip_preparer,
-            mint_public_key_set,
-            signed_envelope_share,
-        ) = genesis_node.issue_genesis_dbc().unwrap();
+        let genesis = genesis_node.issue_genesis_dbc().unwrap();
 
-        let ses = &signed_envelope_share;
+        let ses = &genesis.signed_envelope_share;
 
-        let mint_signature = mint_public_key_set
+        let mint_signature = genesis
+            .public_key_set
             .combine_signatures(vec![(
                 ses.signature_share_index(),
-                &ses.signature_share_for_slip(slip_preparer.blinding_factor())?,
+                &ses.signature_share_for_slip(genesis.slip_preparer.blinding_factor())?,
             )])
             .unwrap();
 
-        let denom_idx = gen_dbc_content.denomination().to_be_bytes();
-        let mint_derived_pks = mint_public_key_set.derive_child(&denom_idx);
+        let denom_idx = genesis.dbc_content.denomination().to_be_bytes();
+        let mint_derived_pks = genesis.public_key_set.derive_child(&denom_idx);
 
         let genesis_dbc = Dbc {
-            content: gen_dbc_content,
+            content: genesis.dbc_content,
             mint_public_key: mint_derived_pks.public_key(),
             mint_signature,
         };

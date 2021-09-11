@@ -36,8 +36,8 @@ pub use crate::{
     error::{Error, Result},
     key_manager::{KeyManager, PublicKey, PublicKeySet, Signature, SimpleKeyManager, SimpleSigner},
     mint::{
-        MintNode, ReissueRequest, ReissueShare, ReissueTransaction, SimpleSpendBook, SpendBook,
-        GENESIS_DBC_INPUT,
+        GenesisDbcShare, MintNode, ReissueRequest, ReissueShare, ReissueTransaction,
+        SimpleSpendBook, SpendBook, GENESIS_DBC_INPUT,
     },
 };
 

@@ -10,7 +10,6 @@
 //! Safe Network DBC Mint CLI playground.
 
 use anyhow::{anyhow, Result};
-use blsbs::{SignedEnvelopeShare, SlipPreparer};
 use blsttc::poly::Poly;
 use blsttc::serde_impl::SerdeSecret;
 use blsttc::{
@@ -21,8 +20,8 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use serde::{Deserialize, Serialize};
 use sn_dbc::{
-    Amount, Dbc, DbcBuilder, DbcContent, DbcEnvelope, DbcTransaction, Denomination, Hash, MintNode,
-    Output, OutputSecret, ReissueRequest, ReissueRequestBuilder, ReissueTransaction,
+    Amount, Dbc, DbcBuilder, DbcEnvelope, Denomination, GenesisDbcShare, Hash, MintNode, Output,
+    OutputSecret, ReissueRequest, ReissueRequestBuilder, ReissueTransaction,
     SimpleKeyManager as KeyManager, SimpleSigner as Signer, SimpleSpendBook as SpendBook,
     TransactionBuilder,
 };
@@ -215,13 +214,7 @@ fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, _amount: Amount) -> Res
     let mut mints: Vec<MintNode<KeyManager, SpendBook>> = Default::default();
 
     // Generate each Mint node, and corresponding NodeSignature. (Index + SignatureShare)
-    let mut genesis_set: Vec<(
-        DbcContent,
-        DbcTransaction,
-        SlipPreparer,
-        PublicKeySet,
-        SignedEnvelopeShare,
-    )> = Default::default();
+    let mut genesis_set: Vec<GenesisDbcShare> = Default::default();
     for i in 0..secret_key_set.threshold() as u64 + 1 {
         let key_manager = KeyManager::new(
             Signer::new(
@@ -238,23 +231,12 @@ fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, _amount: Amount) -> Res
     // Make a list of (Index, SignatureShare) for combining sigs.
     let mut node_sigs: BTreeMap<Fr, SignatureShare> = Default::default();
     for set in genesis_set.iter() {
-        let ses = &set.4;
-        let slip_preparer = &set.2;
+        let ses = &set.signed_envelope_share;
         node_sigs.insert(
             ses.signature_share_index(),
-            ses.signature_share_for_slip(slip_preparer.blinding_factor())?,
+            ses.signature_share_for_slip(set.slip_preparer.blinding_factor())?,
         );
     }
-
-    // let mint_public_key_set = genesis_set[0].3;
-    // let ses = genesis_set[0].4;
-
-    // let mint_signature = mint_public_key_set
-    //     .combine_signatures(vec![(
-    //         ses.signature_share_index(),
-    //         &ses.signature_share_for_slip(slip_preparer.blinding_factor())?,
-    //     )])
-    //     .unwrap();
 
     // Todo: in a true multi-node mint, each node would call issue_genesis_dbc(), then the aggregated
     // signatures would be combined here, so this mk_new_mint fn would to be broken apart.
@@ -263,12 +245,12 @@ fn mk_new_mint(secret_key_set: SecretKeySet, poly: Poly, _amount: Amount) -> Res
         .combine_signatures(&node_sigs)
         .map_err(|e| anyhow!(e))?;
 
-    let denom_idx = genesis_set[0].0.denomination().to_be_bytes();
+    let denom_idx = genesis_set[0].dbc_content.denomination().to_be_bytes();
     let mint_derived_pks = secret_key_set.public_keys().derive_child(&denom_idx);
 
     // Create the Genesis Dbc
     let genesis_dbc = Dbc {
-        content: genesis_set[0].0.clone(),
+        content: genesis_set[0].dbc_content.clone(),
         // mint_public_key: secret_key_set.public_keys().public_key(),
         mint_public_key: mint_derived_pks.public_key(),
         mint_signature,
