@@ -9,17 +9,31 @@ use crate::{
 };
 
 ///! Unblinded data for creating sn_dbc::DbcContent
+#[derive(Debug, Clone)]
 pub struct Output {
     pub denomination: Denomination,
     pub owner: blsttc::PublicKey,
 }
 
+impl Output {
+    pub fn outputs_for_amount(owner: blsttc::PublicKey, amount: Amount) -> Vec<Self> {
+        Denomination::make_change(amount)
+            .iter()
+            .map(|d| Self {
+                denomination: *d,
+                owner,
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct OutputSecret {
     pub slip_preparer: SlipPreparer,
     pub dbc_content: DbcContent,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct TransactionBuilder {
     pub inputs: HashSet<Dbc>,
     pub outputs: Vec<Output>,
@@ -103,7 +117,7 @@ impl TransactionBuilder {
 
 /// Builds a ReissueRequest from a ReissueTransaction and
 /// any number of (input) DBC hashes with associated ownership share(s).
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ReissueRequestBuilder {
     pub reissue_transaction: Option<ReissueTransaction>,
     #[allow(clippy::type_complexity)]
@@ -211,7 +225,7 @@ impl ReissueRequestBuilder {
 /// A Builder for aggregating ReissueShare (Mint::reissue() results)
 /// from multiple mint nodes and combining signatures to
 /// generate the final Dbc outputs.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct DbcBuilder {
     pub reissue_transaction: Option<ReissueTransaction>,
     pub reissue_shares: Vec<ReissueShare>,
