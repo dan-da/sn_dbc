@@ -5,6 +5,7 @@ use rug::Integer;
 use rug::Rational;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -127,6 +128,51 @@ impl Amount {
 
     fn to_rational(self) -> Rational {
         Rational::from(10).pow(self.unit as i32) * Rational::from(self.count)
+    }
+
+    pub fn to_si_string(self) -> String {
+        let map: BTreeMap<i8, &str> = [
+            (24, "yotta"),
+            (21, "zetta"),
+            (18, "exa"),
+            (15, "peta"),
+            (12, "tera"),
+            (9, "giga"),
+            (6, "mega"),
+            (3, "kilo"),
+            (2, "hecto"),
+            (1, "deka"),
+            (0, ""),
+            (-1, "deci"),
+            (-2, "centi"),
+            (-3, "milli"),
+            (-6, "micro"),
+            (-9, "nano"),
+            (-12, "pico"),
+            (-15, "femto"),
+            (-18, "atto"),
+            (-21, "zepto"),
+            (-24, "yocto"),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+
+        if self.unit >= -24 && self.unit <= 24 {
+            let mut unit = self.unit;
+            loop {
+                if let Some(name) = map.get(&unit) {
+                    let diff = self.unit.abs() - unit.abs();
+                    let udiff = Integer::from(10).pow(diff as u32);
+                    let newcount = Integer::from(self.count) * udiff;
+                    return format!("{} {}", newcount, name);
+                } else {
+                    unit += if self.unit >= 0 { -1 } else { 1 };
+                }
+            }
+        }
+
+        self.to_string()
     }
 
     pub fn max() -> Self {
@@ -306,9 +352,7 @@ impl Amount {
 impl fmt::Display for Amount {
     // note:  this also creates ::to_string()
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let r = self.to_rational();
-        debug_assert!(*r.denom() == 1);
-        write!(f, "{}", r.to_string_radix(10))
+        write!(f, "{}*10^{}", self.count, self.unit)
     }
 }
 
@@ -517,6 +561,96 @@ mod tests {
                 assert!(a.to_rational() == b.to_rational())
             }
         }
+        Ok(())
+    }
+
+    #[quickcheck]
+    fn prop_to_si_string(mut amounts: Vec<Amount>) -> Result<()> {
+        amounts.sort();
+
+        for a in amounts.into_iter() {
+            if a.unit >= 0 && a.unit <= 24 && a.count > 0 {
+                println!("{} \t\t<----- {:?}", a.to_si_string(), a);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn to_si_string_vector() -> Result<()> {
+        let vector = vec![
+            "1*10^-30",
+            "1*10^-29",
+            "1*10^-28",
+            "1*10^-27",
+            "1*10^-26",
+            "1*10^-25",
+            "1 yocto",
+            "100 zepto",
+            "10 zepto",
+            "1 zepto",
+            "100 atto",
+            "10 atto",
+            "1 atto",
+            "100 femto",
+            "10 femto",
+            "1 femto",
+            "100 pico",
+            "10 pico",
+            "1 pico",
+            "100 nano",
+            "10 nano",
+            "1 nano",
+            "100 micro",
+            "10 micro",
+            "1 micro",
+            "100 milli",
+            "10 milli",
+            "1 milli",
+            "1 centi",
+            "1 deci",
+            "1 ",
+            "1 deka",
+            "1 hecto",
+            "1 kilo",
+            "10 kilo",
+            "100 kilo",
+            "1 mega",
+            "10 mega",
+            "100 mega",
+            "1 giga",
+            "10 giga",
+            "100 giga",
+            "1 tera",
+            "10 tera",
+            "100 tera",
+            "1 peta",
+            "10 peta",
+            "100 peta",
+            "1 exa",
+            "10 exa",
+            "100 exa",
+            "1 zetta",
+            "10 zetta",
+            "100 zetta",
+            "1 yotta",
+            "1*10^25",
+            "1*10^26",
+            "1*10^27",
+            "1*10^28",
+            "1*10^29",
+        ];
+
+        // note: to keep the fn shorter we only test range -30..30, rather than
+        // -127..127
+        for (idx, i) in (-30..30i8).enumerate() {
+            let a = Amount::new(1, i);
+            let strval = a.to_si_string();
+            println!("{:?}\t--> {}", a, strval);
+            assert_eq!(strval, vector[idx]);
+        }
+
         Ok(())
     }
 }
