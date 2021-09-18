@@ -3,52 +3,6 @@ use crate::{Amount, AmountCounter, PowerOfTen, Result};
 use crate::amount::digits;
 use serde::{Deserialize, Serialize};
 
-// For future reference, if/when we implement human friendly strings
-// such as Denomination::Eight(-5).to_human_string() --> "80 micro"
-
-// SI unit names.
-// From http://www.knowledgedoor.com/2/units_and_constants_handbook/power_prefixes.html
-// yotta   Y   10^24
-// zetta   Z   10^21
-// exa     E   10^18
-// peta    P   10^15
-// tera    T   10^12
-// giga    G   10^9
-// mega    M   10^6
-// kilo    k   10^3
-// hecto   h   10^2
-// deka    da  10^1
-// deci    d   10^-1
-// centi   c   10^-2
-// milli   m   10^-3
-// micro   µ   10^-6
-// nano    n   10^-9
-// pico    p   10^-12
-// femto   f   10^-15
-// atto    a   10^-18
-// zepto   z   10^-21
-// yocto   y   10^-24
-
-// adapted from: https://en.wikipedia.org/wiki/Names_of_large_numbers#Standard_dictionary_numbers
-// note: these names do not include negative exponents, so maybe better to use SI unit names above,
-//       or some combination.
-// pub enum NamedPowerOfTen {
-//      One,
-//      Tau,
-//      Mil,
-//      Bil,
-//      Tril,
-//      Quad,
-//      Quint,
-//      Sic,
-//      Set,
-//      Ott,
-//      Non,
-//      Det,
-//      Unt,
-// }
-
-
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Denomination {
     One(PowerOfTen),
