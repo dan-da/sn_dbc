@@ -192,21 +192,6 @@ impl Denomination {
             chosen.push(*denom);
         }
         chosen
-
-        // Traverse through all denomination
-        // for denom in denoms.into_iter().rev()
-        // {
-        //     // Find denominations
-        //     let denom_amount = denom.amount().to_rational();
-        //     while target >= denom_amount {
-        //         println!("{} >= {}", target, denom_amount);
-        //         // panic!("done");
-        //         target -= denom_amount.clone();
-        //         chosen.push(denom);
-        //     }
-        // }
-        // chosen
-
     }
 }
 
@@ -215,7 +200,6 @@ impl Denomination {
 mod tests {
     use sn_dbc::{Amount, Denomination, Result};
     use quickcheck_macros::quickcheck;
-    use rug::Rational;
 
     #[quickcheck]
     fn prop_make_change(amounts: Vec<Amount>) -> Result<()> {
@@ -231,15 +215,8 @@ mod tests {
         for amt in amounts.clone().into_iter() {
             let coins = Denomination::make_change(amt);
             println!("amount: {:?}, coins len: {}, coins: {:?}", amt, coins.len(), coins);
-            let c_amounts: Vec<Amount> = coins.iter().map(|c| c.amount()).collect();
-            let sum = Amount::checked_sum(c_amounts.into_iter()).unwrap();
-            if sum != amt {
-                let sumr: Rational = coins.iter().map(|c| c.amount().to_rational()).sum();
-                println!("mismatch. coins: {:#?}", coins);
-                println!("sumr: {}", sumr);
-                println!("sumr-alt: {}", sum.to_rational());
-            }
-            assert_eq!(sum, amt);
+            let sum = Amount::checked_sum(coins.iter().map(|c| c.amount()))?;
+            debug_assert_eq!(sum, amt);
             if coins.len() > max_coins {
                 max_coins = coins.len();
                 max_coins_amt = amt;

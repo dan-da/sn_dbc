@@ -8,9 +8,6 @@ use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-// use std::iter::Sum;
-// use std::ops::Add;
-// use std::ops::{Sub, SubAssign};
 
 // represents the exponent in 10^-10, 10^0, 10^3, etc.  -127..127.
 pub type PowerOfTen = i8;
@@ -128,7 +125,7 @@ impl Amount {
         -Self::unit_max()
     }
 
-    pub fn to_rational(&self) -> Rational {
+    fn to_rational(self) -> Rational {
         Rational::from(10).pow(self.unit as i32) * Rational::from(self.count)
     }
 
@@ -435,8 +432,9 @@ impl PartialOrd for Amount {
 
 #[cfg(test)]
 mod tests {
+    use super::Amount;
+    use crate::{Error, Result};
     use quickcheck_macros::quickcheck;
-    use sn_dbc::{Amount, Error, Result};
 
     #[quickcheck]
     fn prop_hash_eq(a: Amount, b: Amount) -> Result<()> {
