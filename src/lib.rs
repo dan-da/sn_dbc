@@ -16,6 +16,7 @@ use std::ops::Deref;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hash([u8; 32]);
 pub(crate) type DbcContentHash = Hash;
+mod amount;
 mod builder;
 mod dbc;
 mod dbc_content;
@@ -28,6 +29,7 @@ mod key_manager;
 mod mint;
 
 pub use crate::{
+    amount::{Amount, AmountCounter, PowerOfTen},
     builder::{DbcBuilder, Output, OutputSecret, ReissueRequestBuilder, TransactionBuilder},
     dbc::Dbc,
     dbc_content::DbcContent,
@@ -49,7 +51,7 @@ pub use crate::{
 //       If going to a smaller size you should regenerate it first by
 //       defining Amount locally to smaller size in denom-gen, then changing
 //       it here.  Else you will get compile errors.
-pub type Amount = u128;
+// pub type Amount = u128;
 
 impl From<[u8; 32]> for Hash {
     fn from(val: [u8; 32]) -> Hash {

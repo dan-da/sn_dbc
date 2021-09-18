@@ -25,34 +25,6 @@ impl Dbc {
         self.content.denomination()
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut b: Vec<u8> = Default::default();
-        b.extend(self.content.to_bytes());
-        b.extend(self.mint_public_key.to_bytes());
-        b.extend(self.mint_signature.to_bytes());
-        b
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let mut c: [u8; 82] = [0; 82];
-        c.copy_from_slice(bytes);
-        let content = DbcContent::from_bytes(c)?;
-
-        let mut pk: [u8; 48] = [0; 48];
-        pk.copy_from_slice(&bytes[82..82 + 48]);
-        let mint_public_key = PublicKey::from_bytes(pk)?;
-
-        let mut s: [u8; 96] = [0; 96];
-        s.copy_from_slice(&bytes[82 + 48..82 + 48 + 96]);
-        let mint_signature = Signature::from_bytes(s)?;
-
-        Ok(Self {
-            content,
-            mint_public_key,
-            mint_signature,
-        })
-    }
-
     pub fn owner(&self) -> &PublicKey {
         self.content.owner()
     }
@@ -62,7 +34,7 @@ impl Dbc {
         verifier
             .verify_slip(
                 &self.content.slip(),
-                &self.content.denomination().to_be_bytes(),
+                &self.content.denomination().to_bytes(),
                 &self.mint_public_key,
                 &self.mint_signature,
             )

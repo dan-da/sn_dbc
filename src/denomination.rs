@@ -231,7 +231,8 @@ mod tests {
         for amt in amounts.clone().into_iter() {
             let coins = Denomination::make_change(amt);
             println!("amount: {:?}, coins len: {}, coins: {:?}", amt, coins.len(), coins);
-            let sum: Amount = coins.iter().map(|c| c.amount()).sum();
+            let c_amounts: Vec<Amount> = coins.iter().map(|c| c.amount()).collect();
+            let sum = Amount::checked_sum(c_amounts.into_iter()).unwrap();
             if sum != amt {
                 let sumr: Rational = coins.iter().map(|c| c.amount().to_rational()).sum();
                 println!("mismatch. coins: {:#?}", coins);

@@ -7,9 +7,9 @@ use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::iter::Sum;
-use std::ops::Add;
-use std::ops::{Sub, SubAssign};
+// use std::iter::Sum;
+// use std::ops::Add;
+// use std::ops::{Sub, SubAssign};
 
 // represents the exponent in 10^-10, 10^0, 10^3, etc.  -127..127.
 pub type PowerOfTen = i8;
@@ -262,35 +262,58 @@ impl Amount {
         }
     }
 
-    pub fn sub_ceil(self, other: Self) -> Self {
-        // steps:
-        // 1. normalize to same units.  use rug:Integer to represent count.
-        // 2. subtract count.
-        // 3. find unit in which count is less than Self::counter_max()
-        // 4. Amount::new()
+    // pub fn sub_ceil(self, other: Self) -> Self {
+    //     // steps:
+    //     // 1. normalize to same units.  use rug:Integer to represent count.
+    //     // 2. subtract count.
+    //     // 3. find unit in which count is less than Self::counter_max()
+    //     // 4. Amount::new()
 
-        // println!("-- sub() --");
-        // println!("self: {:?}, other: {:?}", self, other);
+    //     // println!("-- sub() --");
+    //     // println!("self: {:?}, other: {:?}", self, other);
 
-        assert!(self >= other); // Amount can never be negative.
+    //     assert!(self >= other); // Amount can never be negative.
 
-        let (a, b) = Self::normalize(self, other);
+    //     let (a, b) = Self::normalize(self, other);
 
-        // // 3. find unit in which count is less than Self::counter_max()
-        let mut count_diff = a.count - b.count;
-        let mut unit = a.unit;
-        if count_diff > 0 {
-            while count_diff > Self::counter_max() || count_diff.clone() % 10 == 0 {
-                unit += 1;
-                count_diff = count_diff.div_ceil(10);
-            }
-        }
-        let new_count = AmountCounter::try_from(count_diff).unwrap();
+    //     // // 3. find unit in which count is less than Self::counter_max()
+    //     let mut count_diff = a.count - b.count;
+    //     let mut unit = a.unit;
+    //     if count_diff > 0 {
+    //         while count_diff > Self::counter_max() || count_diff.clone() % 10 == 0 {
+    //             unit += 1;
+    //             count_diff = count_diff.div_ceil(10);
+    //         }
+    //     }
+    //     let new_count = AmountCounter::try_from(count_diff).unwrap();
 
-        Amount::new(new_count, unit)
-    }
+    //     Amount::new(new_count, unit)
+    // }
 
-    pub fn add_ceil(self, other: Self) -> Self {
+    // pub fn add_ceil(self, other: Self) -> Self {
+    //     // steps:
+    //     // 1. normalize to same units.  use rug:Integer to represent count.
+    //     // 2. add counts.
+    //     // 3. find unit in which count is less than Self::counter_max()
+    //     // 4. Amount::new()
+
+    //     let (a, b) = Self::normalize(self, other);
+    //     // println!("a: {:?}, b: {:?}", a, b);
+
+    //     let mut count_sum = a.count + b.count;
+    //     let mut unit = a.unit;
+    //     if count_sum > 0 {
+    //         while count_sum > Self::counter_max() || count_sum.clone() % 10 == 0 {
+    //             unit += 1;
+    //             count_sum = count_sum.div_ceil(10);
+    //         }
+    //     }
+    //     let new_count = AmountCounter::try_from(count_sum).unwrap();
+
+    //     Amount::new(new_count, unit)
+    // }
+
+    pub fn checked_add(self, other: Self) -> Option<Self> {
         // steps:
         // 1. normalize to same units.  use rug:Integer to represent count.
         // 2. add counts.
@@ -308,9 +331,11 @@ impl Amount {
                 count_sum = count_sum.div_ceil(10);
             }
         }
-        let new_count = AmountCounter::try_from(count_sum).unwrap();
 
-        Amount::new(new_count, unit)
+        match AmountCounter::try_from(count_sum) {
+            Ok(v) if v <= Self::counter_max() => Some(Amount::new(v, unit)),
+            _ => None,
+        }
     }
 
     pub fn checked_sub(self, rhs: Self) -> Option<Self> {
@@ -339,6 +364,26 @@ impl Amount {
             _ => None,
         }
     }
+
+    pub fn checked_sum<I>(iter: I) -> Option<Self>
+    where
+        I: Iterator<Item = Self>,
+    {
+        let mut sum = Amount::default();
+        for v in iter {
+            sum = sum.checked_add(v)?;
+        }
+        Some(sum)
+
+        // iter.fold(Some(Amount::default()), |a, b| a.checked_add(b))
+
+        // this should be obsolete/slower than above now.
+        // let mut r_sum = Rational::default();
+        // for v in iter {
+        //     r_sum = r_sum + v.to_rational();
+        // }
+        // Self::try_from(r_sum).unwrap()
+    }
 }
 
 impl fmt::Display for Amount {
@@ -352,105 +397,105 @@ impl fmt::Display for Amount {
 
 // note: add can fail/panic if amounts are not compatible.
 // todo: get rid of this and enforce use of checked_add() instead.
-impl Add for Amount {
-    type Output = Self;
+// impl Add for Amount {
+//     type Output = Self;
 
-    // [count: 1555, unit: 1]  15550
-    // [count:  65,  unit: 2]  6500
-    //                         22050
+// [count: 1555, unit: 1]  15550
+// [count:  65,  unit: 2]  6500
+//                         22050
 
-    // should be:
-    // [count: 2205, 1]
+// should be:
+// [count: 2205, 1]
 
-    fn add(self, other: Self) -> Self {
-        // steps:
-        // 1. normalize to same units.  use rug:Integer to represent count.
-        // 2. add counts.
-        // 3. check if count is less than Self::counter_max()
-        // 4. Amount::new()
+//     fn add(self, other: Self) -> Self {
+//         // steps:
+//         // 1. normalize to same units.  use rug:Integer to represent count.
+//         // 2. add counts.
+//         // 3. check if count is less than Self::counter_max()
+//         // 4. Amount::new()
 
-        let (a, b) = Self::normalize(self, other);
-        // println!("a: {:?}, b: {:?}", a, b);
+//         let (a, b) = Self::normalize(self, other);
+//         // println!("a: {:?}, b: {:?}", a, b);
 
-        let count_sum = a.count + b.count;
-        let new_count = match AmountCounter::try_from(count_sum) {
-            Ok(v) if v <= Self::counter_max() => v,
-            _ => {
-                let (small, big) = match self < other {
-                    true => ("left", "right"),
-                    false => ("right", "left"),
-                };
-                panic!("{} operand is too small to add to {} operand", small, big)
-            }
-        };
+//         let count_sum = a.count + b.count;
+//         let new_count = match AmountCounter::try_from(count_sum) {
+//             Ok(v) if v <= Self::counter_max() => v,
+//             _ => {
+//                 let (small, big) = match self < other {
+//                     true => ("left", "right"),
+//                     false => ("right", "left"),
+//                 };
+//                 panic!("{} operand is too small to add to {} operand", small, big)
+//             }
+//         };
 
-        Amount::new(new_count, a.unit)
-    }
-}
+//         Amount::new(new_count, a.unit)
+//     }
+// }
 
 // note: sub can fail/panic if amounts are not compatible.
 // todo: get rid of this and enforce use of checked_sub() instead.
-impl Sub for Amount {
-    type Output = Self;
+// impl Sub for Amount {
+//     type Output = Self;
 
-    // count = 250000, unit = 1    = 250000 * 10  = 2500000.   digits = 7
-    // count = 40, unit = 4        = 40 * 10000   = 400000.    digits = 6
-    // answer:
+// count = 250000, unit = 1    = 250000 * 10  = 2500000.   digits = 7
+// count = 40, unit = 4        = 40 * 10000   = 400000.    digits = 6
+// answer:
 
-    // count = 30, unit = 1    (300)
-    // count = 60, unit = 0    (60)
-    // answer: count = 24, unit = 1    (240)
+// count = 30, unit = 1    (300)
+// count = 60, unit = 0    (60)
+// answer: count = 24, unit = 1    (240)
 
-    // convert rational to Amount:
-    //  let v = Rational // input.
+// convert rational to Amount:
+//  let v = Rational // input.
 
-    // count = 250000, unit = 1    = 250000 * 10  = 2500000.   digits = 7
-    // count = 40, unit = 5        = 40 * 100000  = 4000000.   digits = 7
+// count = 250000, unit = 1    = 250000 * 10  = 2500000.   digits = 7
+// count = 40, unit = 5        = 40 * 100000  = 4000000.   digits = 7
 
-    // count = 250000, unit = 1    = 25 * 10 = 2500000.   digits = 7
-    // count = 2,  unit = 2        = 2 * 100 = 200
-    // count = 2,  unit = 3        = 2 * 1000 = 2000
-    // count = 2,  unit = 4        = 2 * 10000 = 20000
-    // count = 2,  unit = 5        = 2 * 100000 = 200000  digits = 6
-    // count = 25, unit = 5        = 25 * 100000 = 2500000  digits = 7   works.
-    // count = 26, unit = 5        = 26 * 100000 = 2600000  digits = 7   works.
-    // count = 20, unit = 5        = 20 * 100000 = 2000000  digits = 7   works.
-    // count = 2, unit = 6         = 2 * 1000000 = 2000000  digits = 7   works.
+// count = 250000, unit = 1    = 25 * 10 = 2500000.   digits = 7
+// count = 2,  unit = 2        = 2 * 100 = 200
+// count = 2,  unit = 3        = 2 * 1000 = 2000
+// count = 2,  unit = 4        = 2 * 10000 = 20000
+// count = 2,  unit = 5        = 2 * 100000 = 200000  digits = 6
+// count = 25, unit = 5        = 25 * 100000 = 2500000  digits = 7   works.
+// count = 26, unit = 5        = 26 * 100000 = 2600000  digits = 7   works.
+// count = 20, unit = 5        = 20 * 100000 = 2000000  digits = 7   works.
+// count = 2, unit = 6         = 2 * 1000000 = 2000000  digits = 7   works.
 
-    fn sub(self, other: Self) -> Self {
-        match self.checked_sub(other) {
-            Some(v) => v,
-            None => {
-                println!("a: {:?}, b: {:?}", self, other);
-                panic!("amount operands are incompatible")
-            }
-        }
-    }
-}
+//     fn sub(self, other: Self) -> Self {
+//         match self.checked_sub(other) {
+//             Some(v) => v,
+//             None => {
+//                 println!("a: {:?}, b: {:?}", self, other);
+//                 panic!("amount operands are incompatible")
+//             }
+//         }
+//     }
+// }
 
-impl SubAssign for Amount {
-    fn sub_assign(&mut self, other: Self) {
-        *self = self.sub(other)
-    }
-}
+// impl SubAssign for Amount {
+//     fn sub_assign(&mut self, other: Self) {
+//         *self = self.sub(other)
+//     }
+// }
 
 // note: sum can fail/panic if amounts are not compatible.
 // todo: get rid of this and enforce use of checked_sum() instead.
-impl Sum for Amount {
-    fn sum<I>(iter: I) -> Self
-    where
-        I: Iterator<Item = Self>,
-    {
-        iter.fold(Amount::default(), |a, b| a + b)
+// impl Sum for Amount {
+//     fn sum<I>(iter: I) -> Self
+//     where
+//         I: Iterator<Item = Self>,
+//     {
+//         iter.fold(Amount::default(), |a, b| a + b)
 
-        // this should be obsolete/slower than above now.
-        // let mut r_sum = Rational::default();
-        // for v in iter {
-        //     r_sum = r_sum + v.to_rational();
-        // }
-        // Self::try_from(r_sum).unwrap()
-    }
-}
+//         // this should be obsolete/slower than above now.
+//         // let mut r_sum = Rational::default();
+//         // for v in iter {
+//         //     r_sum = r_sum + v.to_rational();
+//         // }
+//         // Self::try_from(r_sum).unwrap()
+//     }
+// }
 
 // fn count_digits(mut n: AmountCounter) -> usize {
 //     let mut count: usize = 0;
@@ -553,33 +598,6 @@ impl Ord for Amount {
     }
 }
 
-// This is no longer used/needed.  I'm keeping it here just to have one commit in
-// git in case I ever need it again.
-//
-// impl TryFrom<Rational> for Amount {
-//     type Error = Error;
-
-//     fn try_from(n: Rational) -> Result<Self> {
-
-//         for i in -Self::unit_max()..Self::unit_max() {
-//             let pten = Rational::from(10).pow(i as i32);
-//             let count = n.clone().div(pten.clone());
-//             // println!("i: {}, pten: {}, count: {}, counter_max: {}", i, pten, count, Self::counter_max());
-//             if count < Self::counter_max() {
-//                 println!("rational: {}, i: {}, pten: {}, count: {}, counter_max: {}", n, i, pten, count, Self::counter_max());
-
-//                 // see https://gitlab.com/tspiteri/rug/-/issues/31
-//                 debug_assert!(*count.denom() == 1);
-//                 let count_ac = count.numer().try_into().unwrap();
-//                 return Ok(Self::new(count_ac, i))
-//             }
-//         }
-
-//         // fixme: should return an Error.
-//         panic!("Amount cannot be represented: {}", n);
-//     }
-// }
-
 use quickcheck::{Arbitrary, Gen};
 
 impl Arbitrary for Amount {
@@ -631,47 +649,54 @@ mod tests {
         Ok(())
     }
 
+    // #[quickcheck]
+    // fn prop_amount_sub_ceil(a: Amount, b: Amount) -> Result<()> {
+    //     // note: Amount must always be >= 0, so we cannot subtract larger from smaller.
+    //     // note: Amount::new() will panic if any invalid value is created
+    //     //       so we do not need to assert anything here.
+    //     let (left, right) = if a >= b { (a, b) } else { (b, a) };
+    //     let diff = left.sub_ceil(right);
+
+    //     println!("{:?} - {:?} --> {:?}", left, right, diff);
+
+    //     Ok(())
+    // }
+
     #[quickcheck]
-    fn prop_amount_sub_ceil(a: Amount, b: Amount) -> Result<()> {
-        // note: Amount must always be >= 0, so we cannot subtract larger from smaller.
-        // note: Amount::new() will panic if any invalid value is created
-        //       so we do not need to assert anything here.
+    fn amount_checked_sub(a: Amount, b: Amount) -> Result<()> {
         let (left, right) = if a >= b { (a, b) } else { (b, a) };
-        let diff = left.sub_ceil(right);
+        let result = left.checked_sub(right);
 
-        println!("{:?} - {:?} --> {:?}", left, right, diff);
-
-        Ok(())
-    }
-
-    #[quickcheck]
-    fn amount_sub(a: Amount, b: Amount) -> Result<()> {
-        if a.is_sub_compatible(b) {
-            let (left, right) = if a >= b { (a, b) } else { (b, a) };
-            let diff = left.sub_ceil(right);
-
-            println!("{:?} - {:?} --> {:?}", left, right, diff);
+        match result {
+            Some(diff) => println!("{:?} - {:?} --> {:?}", left, right, diff),
+            None => {
+                println!("{:?} - {:?} --> Incompatible", left, right);
+                assert!(a.is_sub_compatible(b) == false);
+            }
         }
-
         Ok(())
     }
 
+    // #[quickcheck]
+    // fn prop_amount_add_ceil(a: Amount, b: Amount) -> Result<()> {
+    //     let sum = a.add_ceil(b);
+
+    //     println!("{:?} + {:?} --> {:?}", a, b, sum);
+
+    //     Ok(())
+    // }
+
     #[quickcheck]
-    fn prop_amount_add_ceil(a: Amount, b: Amount) -> Result<()> {
-        let sum = a.add_ceil(b);
+    fn prop_amount_checked_add(a: Amount, b: Amount) -> Result<()> {
+        let result = a.checked_add(b);
 
-        println!("{:?} + {:?} --> {:?}", a, b, sum);
-
-        Ok(())
-    }
-
-    #[quickcheck]
-    fn prop_amount_add(a: Amount, b: Amount) -> Result<()> {
-        if a.is_add_compatible(b) {
-            let sum = a + b;
-            println!("{:?} + {:?} --> {:?}", a, b, sum);
+        match result {
+            Some(sum) => println!("{:?} - {:?} --> {:?}", a, b, sum),
+            None => {
+                println!("{:?} - {:?} --> Incompatible", a, b);
+                assert!(a.is_sub_compatible(b) == false);
+            }
         }
-
         Ok(())
     }
 
