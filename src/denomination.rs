@@ -166,6 +166,7 @@ mod tests {
         let mut min_coins = usize::MAX;
         let mut min_coins_amt: Amount = Amount::max();
         let mut total_coins = 0usize;
+        let mut amt_count = 0usize;
         for amt in amounts.clone().into_iter() {
             let coins = Denomination::make_change(amt);
             println!("amount: {:?}, coins len: {}, coins: {:?}", amt, coins.len(), coins);
@@ -179,13 +180,16 @@ mod tests {
                 min_coins = coins.len();
                 min_coins_amt = amt;
             }
-            total_coins += coins.len();
+            if amt != Amount::default() {
+                total_coins += coins.len();
+                amt_count += 1;
+            }
         }
         
-        let avg_coins = total_coins / amounts.len();
+        let avg_coins = total_coins as f32 / amt_count as f32;
         println!("min coins: {}, for amount: {:?}", min_coins, min_coins_amt);
         println!("max coins: {}, for amount: {:?}", max_coins, max_coins_amt);
-        println!("avg coins: {} across {} total coins", avg_coins, total_coins);
+        println!("avg coins: {}.  ({} total coins for {} inputs)", avg_coins, total_coins, amt_count);
         println!("---");
 
         Ok(())

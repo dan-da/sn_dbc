@@ -472,12 +472,8 @@ use quickcheck::{Arbitrary, Gen};
 
 impl Arbitrary for Amount {
     fn arbitrary(g: &mut Gen) -> Self {
-        let count = loop {
-            let c = AmountCounter::arbitrary(g);
-            if c <= Amount::counter_max() {
-                break c;
-            }
-        };
+        let count = AmountCounter::arbitrary(g) % Amount::counter_max();
+
         let unit = loop {
             let c = PowerOfTen::arbitrary(g);
             if c >= Amount::unit_min() && c <= Amount::unit_max() {
