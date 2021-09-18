@@ -111,6 +111,11 @@ impl Amount {
         Self { count, unit }
     }
 
+    // note: It's recommended to make this larger than Mint's genesis amount,
+    //       else one immediately gets AmountIncompatible errors when reissuing
+    //       two outputs: [1, GenesisAmount - 1] and must instead reissue to
+    //       larger denoms/units.  not a big deal, but can be confusing when
+    //       writing test cases.
     pub fn counter_max() -> AmountCounter {
         // A billion dbcs ought to be enough for anybody! -- danda 2021.
         1000000000
@@ -130,6 +135,13 @@ impl Amount {
         Rational::from(10).pow(self.unit as i32) * Rational::from(self.count)
     }
 
+    // SI units obtained from:
+    //  http://www.knowledgedoor.com/2/units_and_constants_handbook/power_prefixes.html
+    //
+    // note: presently we special case count == 0.
+    //       So it prints 0 instead of eg 0*10^25 or 0*10^2.
+    //       This hides the unit information, but is easier
+    //       to read.  Anyway, the two cases are equally zero.
     pub fn to_si_string(self) -> String {
         let map: BTreeMap<i8, &str> = [
             (24, "yotta"),
@@ -158,20 +170,22 @@ impl Amount {
         .cloned()
         .collect();
 
-        if self.unit >= -24 && self.unit <= 24 {
+        if self.unit >= -24 && self.unit <= 24 && self.count != 0 {
             let mut unit = self.unit;
             loop {
                 if let Some(name) = map.get(&unit) {
                     let diff = self.unit.abs() - unit.abs();
-                    let udiff = Integer::from(10).pow(diff as u32);
-                    let newcount = Integer::from(self.count) * udiff;
-                    return format!("{} {}", newcount, name);
+                    let udiff = 10u64.pow(diff as u32);
+                    let newcount = self.count as u64 * udiff;
+                    let sep = if name.is_empty() { "" } else { " " };
+                    return format!("{}{}{}", newcount, sep, name);
                 } else {
                     unit += if self.unit >= 0 { -1 } else { 1 };
                 }
             }
         }
 
+        // no available SI units, so we just use default string repr.
         self.to_string()
     }
 
@@ -223,6 +237,7 @@ impl Amount {
     // count = 250,  unit = 1    = 2500  <--- works.  but count can overflow.
     // count = 255,  unit = 1    = 2550.
 
+    // todo: can we somehow normalize without requiring use of BigInteger?
     fn normalize(a: Self, b: Self) -> (NormalizedAmount, NormalizedAmount) {
         let a = a.to_highest_unit();
         let b = b.to_highest_unit();
@@ -337,22 +352,27 @@ impl Amount {
             sum = sum.checked_add(v)?;
         }
         Ok(sum)
-
-        // iter.fold(Some(Amount::default()), |a, b| a.checked_add(b))
-
-        // this should be obsolete/slower than above now.
-        // let mut r_sum = Rational::default();
-        // for v in iter {
-        //     r_sum = r_sum + v.to_rational();
-        // }
-        // Self::try_from(r_sum).unwrap()
     }
 }
 
 impl fmt::Display for Amount {
     // note:  this also creates ::to_string()
+    //
+    // note: presently we special case count == 0.
+    //       So it prints 0 instead of eg 0*10^25 or 0*10^2.
+    //       This hides the unit information, but is easier
+    //       to read.  Anyway, the two cases are equally zero.
+    //
+    // note: presently we special case count == 1, so it
+    //       prints eg 10^25 instead of 1*10^25.  This is
+    //       less regular, but easier to read.  Perhaps it
+    //       is better to use the regular form instead.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}*10^{}", self.count, self.unit)
+        match self.count {
+            0 => write!(f, "0"),
+            1 => write!(f, "10^{}", self.unit),
+            _ => write!(f, "{}*10^{}", self.count, self.unit),
+        }
     }
 }
 
@@ -580,76 +600,85 @@ mod tests {
     #[test]
     fn to_si_string_vector() -> Result<()> {
         let vector = vec![
-            "1*10^-30",
-            "1*10^-29",
-            "1*10^-28",
-            "1*10^-27",
-            "1*10^-26",
-            "1*10^-25",
-            "1 yocto",
-            "100 zepto",
-            "10 zepto",
-            "1 zepto",
-            "100 atto",
-            "10 atto",
-            "1 atto",
-            "100 femto",
-            "10 femto",
-            "1 femto",
-            "100 pico",
-            "10 pico",
-            "1 pico",
-            "100 nano",
-            "10 nano",
-            "1 nano",
-            "100 micro",
-            "10 micro",
-            "1 micro",
-            "100 milli",
-            "10 milli",
-            "1 milli",
-            "1 centi",
-            "1 deci",
-            "1 ",
-            "1 deka",
-            "1 hecto",
-            "1 kilo",
-            "10 kilo",
-            "100 kilo",
-            "1 mega",
-            "10 mega",
-            "100 mega",
-            "1 giga",
-            "10 giga",
-            "100 giga",
-            "1 tera",
-            "10 tera",
-            "100 tera",
-            "1 peta",
-            "10 peta",
-            "100 peta",
-            "1 exa",
-            "10 exa",
-            "100 exa",
-            "1 zetta",
-            "10 zetta",
-            "100 zetta",
-            "1 yotta",
-            "1*10^25",
-            "1*10^26",
-            "1*10^27",
-            "1*10^28",
-            "1*10^29",
+            "2*10^-30",
+            "2*10^-29",
+            "2*10^-28",
+            "2*10^-27",
+            "2*10^-26",
+            "2*10^-25",
+            "2 yocto",
+            "200 zepto",
+            "20 zepto",
+            "2 zepto",
+            "200 atto",
+            "20 atto",
+            "2 atto",
+            "200 femto",
+            "20 femto",
+            "2 femto",
+            "200 pico",
+            "20 pico",
+            "2 pico",
+            "200 nano",
+            "20 nano",
+            "2 nano",
+            "200 micro",
+            "20 micro",
+            "2 micro",
+            "200 milli",
+            "20 milli",
+            "2 milli",
+            "2 centi",
+            "2 deci",
+            "2",
+            "2 deka",
+            "2 hecto",
+            "2 kilo",
+            "20 kilo",
+            "200 kilo",
+            "2 mega",
+            "20 mega",
+            "200 mega",
+            "2 giga",
+            "20 giga",
+            "200 giga",
+            "2 tera",
+            "20 tera",
+            "200 tera",
+            "2 peta",
+            "20 peta",
+            "200 peta",
+            "2 exa",
+            "20 exa",
+            "200 exa",
+            "2 zetta",
+            "20 zetta",
+            "200 zetta",
+            "2 yotta",
+            "2*10^25",
+            "2*10^26",
+            "2*10^27",
+            "2*10^28",
+            "2*10^29",
         ];
 
-        // note: to keep the fn shorter we only test range -30..30, rather than
+        // note: to keep this fn shorter we only test range -30..30, rather than
         // -127..127
         for (idx, i) in (-30..30i8).enumerate() {
-            let a = Amount::new(1, i);
+            let a = Amount::new(2, i);
             let strval = a.to_si_string();
             println!("{:?}\t--> {}", a, strval);
             assert_eq!(strval, vector[idx]);
         }
+
+        // 0 and 1 are special cases.
+        assert_eq!(Amount::new(0, -5).to_si_string(), "0");
+        assert_eq!(Amount::new(0, 5).to_si_string(), "0");
+        assert_eq!(Amount::new(1, 25).to_si_string(), "10^25");
+        assert_eq!(Amount::new(1, -25).to_si_string(), "10^-25");
+        assert_eq!(Amount::new(1, 0).to_si_string(), "1");
+        assert_eq!(Amount::new(1, 1).to_si_string(), "1 deka");
+        assert_eq!(Amount::new(1, 2).to_si_string(), "1 hecto");
 
         Ok(())
     }
