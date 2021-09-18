@@ -126,16 +126,10 @@ impl ReissueTransaction {
 
     fn validate_balance(&self) -> Result<()> {
         let i_amounts = self.inputs.iter().map(|d| d.denomination().amount());
-        let inputs = match Amount::checked_sum(i_amounts) {
-            Some(sum) => sum,
-            None => return Err(Error::IncompatibleDenomination),
-        };
+        let inputs = Amount::checked_sum(i_amounts)?;
 
         let o_amounts = self.outputs.iter().map(|o| o.denomination.amount());
-        let outputs = match Amount::checked_sum(o_amounts) {
-            Some(sum) => sum,
-            None => return Err(Error::IncompatibleDenomination),
-        };
+        let outputs = Amount::checked_sum(o_amounts)?;
 
         // let inputs: Amount = self
         //     .inputs
@@ -516,10 +510,7 @@ mod tests {
                 owner: genesis_owner.public_key_set.public_key(),
             })
             .collect();
-        let change_amt = genesis_denomination()
-            .amount()
-            .checked_sub(pay_amt)
-            .unwrap();
+        let change_amt = genesis_denomination().amount().checked_sub(pay_amt)?;
         let change_denoms = Denomination::make_change(change_amt);
         let change_outputs: Vec<Output> = change_denoms
             .iter()
@@ -563,7 +554,7 @@ mod tests {
         println!("Dbc size: {:?}", bytes.len());
 
         let amounts: Vec<Amount> = dbcs.iter().map(|d| d.denomination().amount()).collect();
-        let outputs_sum = Amount::checked_sum(amounts.into_iter()).unwrap();
+        let outputs_sum = Amount::checked_sum(amounts.into_iter())?;
 
         assert_eq!(dbcs.len(), num_outputs);
         assert_ne!(dbcs[0].name(), genesis_dbc.name());
@@ -647,13 +638,10 @@ mod tests {
         );
 
         let n_outputs = output_amounts.len();
-        let output_amount = Amount::checked_sum(output_amounts.clone().into_iter()).unwrap();
+        let output_amount = Amount::checked_sum(output_amounts.clone().into_iter())?;
 
         // if there are any outputs, then we must add a change output.
-        let change = genesis_denomination()
-            .amount()
-            .checked_sub(output_amount)
-            .unwrap();
+        let change = genesis_denomination().amount().checked_sub(output_amount)?;
         if n_outputs > 0 {
             output_amounts.push(change);
         }
@@ -721,8 +709,8 @@ mod tests {
             .collect();
 
         assert_eq!(
-            Amount::checked_sum(amounts.into_iter()).unwrap(),
-            output_amount.checked_add(change).unwrap()
+            Amount::checked_sum(amounts.into_iter())?,
+            output_amount.checked_add(change)?
         );
 
         Ok(())

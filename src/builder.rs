@@ -69,24 +69,12 @@ impl TransactionBuilder {
 
     pub fn inputs_amount_sum(&self) -> Result<Amount> {
         let amounts = self.inputs.iter().map(|d| d.denomination().amount());
-
-        match Amount::checked_sum(amounts) {
-            Some(sum) => Ok(sum),
-            None => Err(Error::IncompatibleDenomination),
-        }
-
-        // self.inputs.iter().map(|s| s.denomination().amount()).sum()
+        Amount::checked_sum(amounts)
     }
 
     pub fn outputs_amount_sum(&self) -> Result<Amount> {
         let amounts = self.outputs.iter().map(|o| o.denomination.amount());
-
-        match Amount::checked_sum(amounts) {
-            Some(sum) => Ok(sum),
-            None => Err(Error::IncompatibleDenomination),
-        }
-
-        // self.outputs.iter().map(|o| o.denomination.amount()).sum()
+        Amount::checked_sum(amounts)
     }
 
     // Note: The HashMap result is necessary because DbcBuilder needs a couple things:
