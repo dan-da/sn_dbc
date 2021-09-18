@@ -387,7 +387,7 @@ mod tests {
     }
 
     fn genesis_denomination() -> Denomination {
-        Denomination::One(10)
+        Denomination::One(8)
     }
 
     fn genesis() -> Result<(
