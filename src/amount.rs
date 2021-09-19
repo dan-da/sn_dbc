@@ -117,7 +117,7 @@ impl Amount {
     //       larger denoms/units.  not a big deal, but can be confusing when
     //       writing test cases.
     pub fn counter_max() -> AmountCounter {
-        // A billion dbcs ought to be enough for anybody! -- danda 2021.
+        // One billion units per tx ought to be enough for anybody! -- danda 2021.
         1000000000
     }
 
@@ -368,10 +368,15 @@ impl fmt::Display for Amount {
     //       less regular, but easier to read.  Perhaps it
     //       is better to use the regular form instead.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.count {
-            0 => write!(f, "0"),
-            1 => write!(f, "10^{}", self.unit),
-            _ => write!(f, "{}*10^{}", self.count, self.unit),
+        let str = match self.count {
+            0 => "0".to_string(),
+            1 => format!("10^{}", self.unit),
+            _ => format!("{}*10^{}", self.count, self.unit),
+        };
+        if let Some(width) = f.width() {
+            write!(f, "{:width$}", str, width = width)
+        } else {
+            write!(f, "{}", str)
         }
     }
 }
@@ -663,7 +668,8 @@ mod tests {
         for (idx, i) in (-30..30i8).enumerate() {
             let a = Amount::new(2, i);
             let strval = a.to_si_string();
-            println!("{:?}\t--> {}", a, strval);
+            // println!("{:?}\t--> {}", a, strval);
+            println!("{:<8}\t--> {}", a, strval);
             assert_eq!(strval, vector[idx]);
         }
 
