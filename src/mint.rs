@@ -17,9 +17,9 @@ mod tests {
     use std::iter::FromIterator;
 
     use crate::{
-        Amount, AmountSecrets, Dbc, DbcContent, Error, GenesisBuilderMock, GenesisMaterial,
-        IndexedSignatureShare, KeyImage, Owner, OwnerOnce, Result, SpentBookNodeMock,
-        SpentProofContent, SpentProofShare, TransactionBuilder,
+        mock, Amount, AmountSecrets, Dbc, DbcContent, Error, GenesisMaterial,
+        IndexedSignatureShare, KeyImage, Owner, OwnerOnce, Result, SpentProofContent,
+        SpentProofShare, TransactionBuilder,
     };
 
     #[test]
@@ -27,7 +27,7 @@ mod tests {
         let mut rng = crate::rng::from_seed([0u8; 32]);
 
         let (spentbook_node, genesis_dbc, genesis, _amount_secrets) =
-            GenesisBuilderMock::init_genesis_single(&mut rng)?;
+            mock::GenesisBuilder::init_genesis_single(&mut rng)?;
 
         let verified = genesis_dbc.verify(
             &genesis.owner_once.owner_base().secret_key()?,
@@ -51,7 +51,7 @@ mod tests {
         let output_amount = output_amounts.iter().sum();
 
         let (mut spentbook_node, genesis_dbc, _genesis, _amount_secrets) =
-            GenesisBuilderMock::init_genesis_single(&mut rng)?;
+            mock::GenesisBuilder::init_genesis_single(&mut rng)?;
 
         let owners: Vec<OwnerOnce> = (0..output_amounts.len())
             .map(|_| OwnerOnce::from_owner_base(Owner::from_random_secret_key(&mut rng), &mut rng))
@@ -163,7 +163,7 @@ mod tests {
         let num_decoy_inputs: usize = num_decoy_inputs.coerce::<usize>() % 2;
 
         let (mut spentbook_node, genesis_dbc, _genesis, _amount_secrets) =
-            GenesisBuilderMock::init_genesis_single(&mut rng)?;
+            mock::GenesisBuilder::init_genesis_single(&mut rng)?;
 
         let mut dbc_builder = TransactionBuilder::default()
             .add_input_dbc(
@@ -375,7 +375,7 @@ mod tests {
         let mut rng = crate::rng::from_seed([0u8; 32]);
 
         let (spentbook_node, _genesis_dbc, _genesis, _amount_secrets) =
-            GenesisBuilderMock::init_genesis_single(&mut rng)?;
+            mock::GenesisBuilder::init_genesis_single(&mut rng)?;
 
         let output1_owner =
             OwnerOnce::from_owner_base(Owner::from_random_secret_key(&mut rng), &mut rng);
@@ -613,8 +613,8 @@ mod tests {
 
             // The builder should return an error because the spentproof does not match the tx.
             match result {
-                Err(Error::SpentbookKeyImageAlreadySpent) => {}
-                _ => panic!("Expected Error::SpentbookKeyImageAlreadySpent"),
+                Err(Error::Mock(mock::Error::KeyImageAlreadySpent)) => {}
+                _ => panic!("Expected Error::Mock::Error::KeyImageAlreadySpent"),
             }
         }
 
@@ -635,7 +635,7 @@ mod tests {
         //
         // Make a new spentbook and replay the first three tx, plus the new tx_true
         // Note that the new spentbook uses the same signing key as the original
-        let mut new_spentbook = SpentBookNodeMock::from(spentbook.key_manager);
+        let mut new_spentbook = mock::SpentBookNode::from(spentbook.key_manager);
         let _genesis_spent_proof_share = new_spentbook.log_spent(
             genesis_dbc.transaction.mlsags[0].key_image.into(),
             genesis_dbc.transaction.clone(),
