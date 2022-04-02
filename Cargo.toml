@@ -16,11 +16,14 @@ mock = []
 
 [dependencies]
 thiserror = "1.0.24"
-blsttc = "5.1.2"
+# blsttc = "5.1.3"
+blsttc = {git = "https://github.com/dan-da/blsttc", branch = "serialize_error"}
 hex = "0.4.3"
 
   [dependencies.blst_ringct]
-  git = "https://github.com/maidsafe/blst-ringct"
+  # git = "https://github.com/maidsafe/blst-ringct"
+  git = "https://github.com/dan-da/blst-ringct"
+  branch = "serialize_error"
 
   [dependencies.tiny-keccak]
   version = "2.0.0"
